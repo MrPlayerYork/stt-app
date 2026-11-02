@@ -63,6 +63,7 @@ class Transcriber:
         self._model = None
         self._description: str | None = None
         self._load_lock = threading.Lock()
+        self._listeners: list[ProgressFn] = []
 
     @property
     def description(self) -> str | None:
@@ -83,7 +84,7 @@ class Transcriber:
             return self.model_name
 
         def report(done: int, total: int, name: str) -> None:
-            for cb in (self.on_progress, on_progress):
+            for cb in (self.on_progress, on_progress, *tuple(self._listeners)):
                 if cb:
                     cb(done, total, name)
 
@@ -93,13 +94,21 @@ class Transcriber:
             raise TranscriberError(f"Could not download model '{self.model_name}': {e}") from e
 
     def load(self, on_progress: ProgressFn | None = None) -> str:
-        with self._load_lock:  # the UI loader thread and calibration can both call this
-            return self._load(on_progress)
+        # The UI loader thread and calibration can both call this. A caller waiting on the lock
+        # still hears the other thread's download progress because it is registered first.
+        if on_progress:
+            self._listeners.append(on_progress)
+        try:
+            with self._load_lock:
+                return self._load()
+        finally:
+            if on_progress:
+                self._listeners.remove(on_progress)
 
-    def _load(self, on_progress: ProgressFn | None) -> str:
+    def _load(self) -> str:
         if self._model is not None and self._description:
             return self._description
-        path = self.fetch(on_progress)
+        path = self.fetch()
         _preload_cuda_libs()
         try:
             from faster_whisper import WhisperModel

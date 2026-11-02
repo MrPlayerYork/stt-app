@@ -28,6 +28,7 @@ from .llm import (
     make_backend,
     process,
 )
+from . import keys
 from .download import DownloadError, ensure_model
 from .transcribe import MODELS, Transcriber, TranscriberError
 
@@ -73,6 +74,11 @@ class ModelLoader:
         speed = (done - prev[1]) / max(now - prev[0], 1e-3) if prev and done >= prev[1] else 0.0
         self._sample = (now, done)
         self._dl = (name, done, total, speed, now)
+
+    @property
+    def busy(self) -> bool:
+        """True while downloading or loading, i.e. while the status text can still change."""
+        return not self.done.is_set()
 
     @property
     def status(self) -> Text:
@@ -152,20 +158,60 @@ class App:
         t.add_row(Text("Mode", style="bold"), Text(self.mode_label()))
         return Panel(t, title="[bold]Speech to Text[/]", border_style="blue")
 
-    def show_result(self, item: HistoryItem) -> None:
-        self.console.print(Panel(Text(item.raw), title="Raw transcript", border_style="dim"))
+    def result_panels(self, item: HistoryItem) -> list[Panel]:
+        panels = [Panel(Text(item.raw), title="Raw transcript", border_style="dim")]
         if item.final != item.raw:
-            self.console.print(Panel(Text(item.final), title=f"Processed ({item.mode})", border_style="green"))
+            panels.append(Panel(Text(item.final), title=f"Processed ({item.mode})", border_style="green"))
+        return panels
+
+    def show_result(self, item: HistoryItem) -> None:
+        self.console.print(*self.result_panels(item))
+
+    def choose(self, label: str, choices: list[str], default: str) -> str:
+        """Single-keypress pick; Enter selects the default (which may be "")."""
+        self.console.print(f"{label}: ", end="")
+        with keys.cbreak():
+            while True:
+                key = keys.read_key(None)
+                key = default if key == "\n" else key.lower()
+                if key == default or key in choices:
+                    break
+        self.console.print(key)
+        return key
 
     def main_screen(self) -> str:
-        self.console.print(self.header())
-        if self.last:
-            self.console.print("[dim]Last result:[/]")
-            self.show_result(self.last)
+        """Show the main screen and return the chosen key; the header updates live while loading."""
         choices = ["r", "m", "h", "s", "q"] + (["p"] if self.mode_key() == "prompt" else [])
-        menu = "[r]ecord  [m]ode  " + ("[p]reset  " if "p" in choices else "") + "[h]istory  [s]ettings  [q]uit"
-        self.console.print(Text(menu, style="bold"))
-        return self.ask("Choice", choices=choices, default="r", show_choices=False)
+        menu = Text("[r]ecord  [m]ode  " + ("[p]reset  " if "p" in choices else "")
+                    + "[h]istory  [s]ettings  [q]uit", style="bold")
+
+        def view() -> Group:
+            parts = [self.header()]
+            if self.last:
+                parts += [Text("Last result:", style="dim"), *self.result_panels(self.last)]
+            return Group(*parts, menu)
+
+        loader = self.loader
+        live: Live | None = None
+        with keys.cbreak():
+            try:
+                if loader and loader.busy:
+                    live = Live(console=self.console, refresh_per_second=4, get_renderable=view)
+                    live.start()
+                else:
+                    self.console.print(view())
+                while True:
+                    key = keys.read_key(0.25 if live else None)
+                    if live and not loader.busy:
+                        live.stop()  # leaves the final state on screen
+                        live = None
+                    if key == "\n":
+                        return "r"
+                    if key and key.lower() in choices:
+                        return key.lower()
+            finally:
+                if live:
+                    live.stop()
 
     def run(self) -> None:
         self.start_loading()
@@ -322,14 +368,14 @@ class App:
         actions = {"1": self.set_microphone, "2": self.set_whisper, "3": self.set_llm}
         while True:
             self.console.print(Panel("1  Microphone\n2  Whisper\n3  LLM\nb  Back", title="Settings"))
-            c = self.ask("Settings", choices=[*actions, "b"], default="b", show_choices=False)
+            c = self.choose("Settings", [*actions, "b"], "b")
             if c == "b":
                 return
             actions[c]()
 
     def set_microphone(self) -> None:
         self.console.print("1  Run calibration\n2  Pick from a list")
-        c = self.ask("Microphone", choices=["1", "2", ""], default="", show_default=False, show_choices=False)
+        c = self.choose("Microphone", ["1", "2"], "")
         if c == "1":
             self.calibrate()
         elif c == "2":
@@ -377,7 +423,7 @@ class App:
             ]:
                 t.add_row(Text(k, style="cyan"), label, Text(val))
             self.console.print(Panel(t, title="Whisper settings"))
-            c = self.ask("Whisper", choices=[*actions, "b"], default="b", show_choices=False)
+            c = self.choose("Whisper", [*actions, "b"], "b")
             if c == "b":
                 return
             actions[c]()
@@ -463,7 +509,7 @@ class App:
             ]:
                 t.add_row(Text(k, style="cyan"), label, Text(val))
             self.console.print(Panel(t, title="LLM settings"))
-            c = self.ask("LLM", choices=[*actions, "b"], default="b", show_choices=False)
+            c = self.choose("LLM", [*actions, "b"], "b")
             if c == "b":
                 return
             actions[c]()
@@ -550,8 +596,7 @@ class App:
         prompts = self.cfg.llm.custom_prompts
         for n, p in prompts.items():
             self.console.print(Text.assemble((n, "cyan"), ": ", p[:70] + ("..." if len(p) > 70 else "")))
-        c = self.ask("add/edit (a), delete (d), Enter to go back", choices=["a", "d", ""], default="",
-                     show_default=False, show_choices=False)
+        c = self.choose("add/edit (a), delete (d), Enter to go back", ["a", "d"], "")
         if c == "a":
             name = self.ask("Prompt name").strip()
             if not name:
