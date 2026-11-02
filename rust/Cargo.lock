@@ -2803,6 +2803,7 @@ dependencies = [
  "indexmap",
  "keyring",
  "serde",
+ "sha2 0.10.9",
  "stt-core",
  "thiserror 2.0.21",
  "toml",
