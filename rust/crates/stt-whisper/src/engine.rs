@@ -101,7 +101,10 @@ fn gpu_device() -> Result<ComputeDevice, String> {
     };
     let lower = first.name.to_lowercase();
     if lower.contains("llvmpipe") || lower.contains("lavapipe") || lower.contains("swiftshader") {
-        return Err(format!("only a software Vulkan device found ({})", first.name));
+        return Err(format!(
+            "only a software Vulkan device found ({})",
+            first.name
+        ));
     }
     Ok(ComputeDevice::Gpu {
         backend: "Vulkan".into(),
@@ -165,7 +168,7 @@ impl RsSession {
             };
             let text = seg.to_str_lossy().map_err(|e| e.to_string())?;
             let text = text.trim();
-            if text.is_empty() || is_non_speech_marker(text) {
+            if !text.chars().any(char::is_alphanumeric) || is_non_speech_marker(text) {
                 continue;
             }
             parts.push(text.to_owned());

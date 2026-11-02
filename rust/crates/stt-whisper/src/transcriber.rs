@@ -156,10 +156,7 @@ impl<B: Backend> WhisperTranscriber<B> {
     fn broadcast(&self, ev: LoadEvent) {
         *lock(&self.last_event) = Some(ev.clone());
         // Clone the callbacks so none runs under the lock (a callback may be slow).
-        let cbs: Vec<LoadProgressFn> = lock(&self.listeners)
-            .iter()
-            .map(|l| l.cb.clone())
-            .collect();
+        let cbs: Vec<LoadProgressFn> = lock(&self.listeners).iter().map(|l| l.cb.clone()).collect();
         for cb in cbs {
             cb(&ev);
         }
@@ -240,10 +237,19 @@ impl<B: Backend> WhisperTranscriber<B> {
                 DeviceKind::Cpu => ComputeDevice::Cpu,
             };
             self.broadcast(LoadEvent::Loading { device: announce });
-            let label = if *kind == DeviceKind::Gpu { "GPU" } else { "CPU" };
+            let label = if *kind == DeviceKind::Gpu {
+                "GPU"
+            } else {
+                "CPU"
+            };
             let result = self
                 .backend
-                .open(&path, vad.as_deref(), *kind, self.settings.language.as_deref())
+                .open(
+                    &path,
+                    vad.as_deref(),
+                    *kind,
+                    self.settings.language.as_deref(),
+                )
                 .and_then(|mut s| s.warm_up().map(|()| s));
             match result {
                 Ok(session) => {
@@ -473,7 +479,13 @@ mod tests {
 
     #[test]
     fn empty_audio_does_not_load() {
-        let (t, dir) = make("empty", WhisperDevice::Auto, FakeBackend::default(), no_fetch(), true);
+        let (t, dir) = make(
+            "empty",
+            WhisperDevice::Auto,
+            FakeBackend::default(),
+            no_fetch(),
+            true,
+        );
         assert_eq!(t.transcribe(&[]).unwrap(), "");
         assert!(t.info().is_none());
         std::fs::remove_dir_all(dir).ok();
@@ -481,7 +493,13 @@ mod tests {
 
     #[test]
     fn loads_on_gpu_and_transcribes() {
-        let (t, dir) = make("gpu", WhisperDevice::Auto, FakeBackend::default(), no_fetch(), true);
+        let (t, dir) = make(
+            "gpu",
+            WhisperDevice::Auto,
+            FakeBackend::default(),
+            no_fetch(),
+            true,
+        );
         let (cb, evs) = collect();
         let info = t.load(Some(cb)).unwrap();
         assert!(matches!(info.device, ComputeDevice::Gpu { .. }));
@@ -510,7 +528,12 @@ mod tests {
         assert_eq!(info.fallback_reason.as_deref(), Some("no vulkan"));
         let evs = evs.lock().unwrap();
         assert!(matches!(evs[1], LoadEvent::Fallback { .. }));
-        assert!(matches!(evs[2], LoadEvent::Loading { device: ComputeDevice::Cpu }));
+        assert!(matches!(
+            evs[2],
+            LoadEvent::Loading {
+                device: ComputeDevice::Cpu
+            }
+        ));
         std::fs::remove_dir_all(dir).ok();
     }
 
@@ -587,13 +610,22 @@ mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let c2 = calls.clone();
         let fetcher: Fetcher = Arc::new(move |repo, file, dest, _, conns, _| {
-            assert_eq!((repo, file), ("ggerganov/whisper.cpp", "ggml-large-v3-turbo-q5_0.bin"));
+            assert_eq!(
+                (repo, file),
+                ("ggerganov/whisper.cpp", "ggml-large-v3-turbo-q5_0.bin")
+            );
             assert_eq!(conns, 2);
             c2.fetch_add(1, Ordering::SeqCst);
             std::fs::write(dest, b"x").unwrap();
             Ok(())
         });
-        let (t, dir) = make("dl", WhisperDevice::Auto, FakeBackend::default(), fetcher, false);
+        let (t, dir) = make(
+            "dl",
+            WhisperDevice::Auto,
+            FakeBackend::default(),
+            fetcher,
+            false,
+        );
         let p = t.fetch(None).unwrap();
         assert!(p.ends_with("ggml-large-v3-turbo-q5_0.bin"));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -604,11 +636,19 @@ mod tests {
 
     #[test]
     fn download_failure_maps_to_download_error() {
-        let fetcher: Fetcher = Arc::new(|_, _, _, _, _, _| {
-            Err(DownloadError::Network("offline".into()))
-        });
-        let (t, dir) = make("dlfail", WhisperDevice::Auto, FakeBackend::default(), fetcher, false);
-        assert!(matches!(t.load(None), Err(TranscribeError::Download { .. })));
+        let fetcher: Fetcher =
+            Arc::new(|_, _, _, _, _, _| Err(DownloadError::Network("offline".into())));
+        let (t, dir) = make(
+            "dlfail",
+            WhisperDevice::Auto,
+            FakeBackend::default(),
+            fetcher,
+            false,
+        );
+        assert!(matches!(
+            t.load(None),
+            Err(TranscribeError::Download { .. })
+        ));
         std::fs::remove_dir_all(dir).ok();
     }
 }

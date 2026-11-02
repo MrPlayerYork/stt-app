@@ -53,7 +53,11 @@ fn main() {
 
     let t0 = Instant::now();
     let info = t.load(None).expect("load");
-    println!("LOAD_WARMUP_S {:.3} ({})", t0.elapsed().as_secs_f64(), info.description());
+    println!(
+        "LOAD_WARMUP_S {:.3} ({})",
+        t0.elapsed().as_secs_f64(),
+        info.description()
+    );
     let mut best = f64::MAX;
     let mut text = String::new();
     for i in 0..runs {

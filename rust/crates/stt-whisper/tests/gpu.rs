@@ -36,7 +36,9 @@ fn make(quant: WhisperQuant, device: WhisperDevice) -> Option<Arc<dyn Transcribe
     cfg.whisper.models_dir = models_dir().to_string_lossy().into_owned();
     cfg.whisper.quantization = quant;
     cfg.whisper.device = device;
-    let file = stt_whisper::models::resolve(&cfg.whisper.model, quant).unwrap().file;
+    let file = stt_whisper::models::resolve(&cfg.whisper.model, quant)
+        .unwrap()
+        .file;
     if !models_dir().join(file).exists() {
         eprintln!("skipping: {file} not in {}", models_dir().display());
         return None;
@@ -61,7 +63,8 @@ fn norm(s: &str) -> String {
 #[test]
 #[ignore = "needs the GPU slot, models and audio"]
 fn gpu_q5_0_loads_on_vulkan_and_transcribes() {
-    let (Some(t), Some(audio)) = (make(WhisperQuant::Q5_0, WhisperDevice::Gpu), gate_audio()) else {
+    let (Some(t), Some(audio)) = (make(WhisperQuant::Q5_0, WhisperDevice::Gpu), gate_audio())
+    else {
         return;
     };
     let events = Arc::new(Mutex::new(Vec::new()));
@@ -121,7 +124,8 @@ fn gpu_f16_matches_q5_0_text() {
 #[test]
 #[ignore = "needs the GPU slot, models and audio"]
 fn cpu_device_runs_on_cpu() {
-    let (Some(t), Some(audio)) = (make(WhisperQuant::Q5_0, WhisperDevice::Cpu), gate_audio()) else {
+    let (Some(t), Some(audio)) = (make(WhisperQuant::Q5_0, WhisperDevice::Cpu), gate_audio())
+    else {
         return;
     };
     let info = t.load(None).unwrap();
