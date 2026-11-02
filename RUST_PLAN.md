@@ -65,9 +65,11 @@ Model tiers: **H** = haiku, **S** = sonnet, **O** = opus. "Heavy" = needs the `h
 
 ### Phase 0 — Prerequisites (orchestrator + user, before any agent)
 1. `/merge` the milestone branches into `master`; branch `rust-rewrite` from it (docs are committed there already).
-2. **User approval needed** for brew installs: `vulkan-headers` + `vulkan-loader` (Vulkan dev files; runtime and
-   `glslc`, `cmake`, `clang` are already present), `sccache` (shared compile cache across worktrees), `ninja` (optional, faster cmake).
-3. Verify: `pkg-config --modversion vulkan`, `glslc --version`, `cargo --version` (rustc 1.97.1 present).
+2. Vulkan build deps are **already installed via brew** (`vulkan-headers`, `vulkan-loader`, `shaderc`/`glslc`,
+   `glslang`, `spirv-*`, plus `cmake`, `clang`). The system `/usr/bin/pkg-config` doesn't search brew, so builds need
+   `PKG_CONFIG_PATH=/home/linuxbrew/.linuxbrew/lib/pkgconfig` (put it in `rust/.cargo/config.toml` `[env]`).
+   **User approval still needed** for the optional `brew install sccache` (shared compile cache across worktrees) and `ninja` (faster cmake).
+3. Verify: `PKG_CONFIG_PATH=... pkg-config --modversion vulkan` (1.4.363), `glslc --version`, `cargo --version` (rustc 1.97.1).
 
 ### Phase 1 — Skeleton + Whisper gate (2 agents, parallel)
 | ID | Task | Tier | Notes |
