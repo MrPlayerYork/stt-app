@@ -81,6 +81,29 @@ $B wait-load                                # block until load < 12 and >= 4 GB 
   `reference/hf_downloader.py` itself (it writes a config into `reference/` and nests files by publisher).
 - Don't run long-lived processes; stop anything you start. Use `timeout` on test runs that could hang.
 
+### Building whisper.cpp with Vulkan (`stt-whisper`, the `stt` binary, `scratch/whisper-spike`)
+Proven in P1-b (`scratch/whisper-spike/RESULTS.md`). Without these fixes the build fails or links wrong:
+- Use **`whisper-rs` 0.16+** (feature `vulkan`). 0.14 fails with clang 22 (bindgen `_IO_FILE` layout assertions).
+- Brew doesn't link `vulkan-headers` into its prefix, so give CMake a fake SDK dir. Create it once per worktree, next
+  to the `.cargo/` dir that uses it (it's gitignored; add `vk-sdk/` to `.gitignore` if it isn't there yet):
+  `mkdir -p vk-sdk && ln -sfn /home/linuxbrew/.linuxbrew/opt/vulkan-headers/include vk-sdk/include && ln -sfn /home/linuxbrew/.linuxbrew/lib vk-sdk/lib`
+  (`opt/` is brew's version-independent path, so this survives brew upgrades.)
+- Add to that `.cargo/config.toml` (on top of the jobs/sccache/Ninja settings already there):
+  ```toml
+  [build]
+  rustflags = ["-L", "/home/linuxbrew/.linuxbrew/lib", "-C", "link-arg=-Wl,-rpath,/home/linuxbrew/.linuxbrew/lib"]
+  [env]
+  VULKAN_SDK = { value = "vk-sdk", relative = true }
+  CMAKE_INCLUDE_PATH = "/home/linuxbrew/.linuxbrew/opt/vulkan-headers/include"
+  CMAKE_LIBRARY_PATH = "/home/linuxbrew/.linuxbrew/lib"
+  ```
+  The rpath makes `-lvulkan` link and load at run time.
+- Cargo only reads `.cargo/config.toml` from the cwd upward: run cargo **from inside `rust/`** (or the spike dir), never
+  with `--manifest-path` from the repo root, or none of this config (or sccache) applies.
+- A failed first try can leave a stale CMake `NOTFOUND` cache: delete `target/*/build/whisper-rs-sys-*/out/build`, then retry.
+- Check the run log shows `ggml_vulkan: 0 = NVIDIA GeForce RTX 4070 SUPER` and `using Vulkan0 backend`, not `llvmpipe`.
+- The first GPU run after a fresh build compiles shaders (about 16 s once); time warm runs, not that one.
+
 ### Verifying and reporting
 - Done = your crate's tests pass (`cargo test -p <crate>`), `cargo clippy -p <crate>` is clean, plus any real-world
   check your prompt asks for (in the right slot).

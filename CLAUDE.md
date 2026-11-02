@@ -10,4 +10,6 @@ Run the app (real terminal only): `uv run stt-app`
 
 - Python via `uv` only. User settings live in `~/.config/stt-app/config.toml`; API keys in the system keyring.
 - `reference/` is the user's material: gitignored, never commit it.
-- Next step for the rewrite: RUST_PLAN.md Phase 0 (`/merge` milestones into master), then Phase 1.
+- Rewrite status: Phases 0-1 done (2026-11-01; Whisper/Vulkan gate passed, user greenlit). Next: RUST_PLAN.md Phase 2.
+  Open questions to settle along the way: [CAVEATS.md](CAVEATS.md).
+- Rust test command (from `rust/`, heavy slot): `cargo test --workspace`
