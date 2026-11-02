@@ -1,2 +1,10 @@
+"""Push-to-record speech-to-text terminal app."""
+
+
 def main() -> None:
-    print("Hello from stt-app!")
+    from .ui import main as _main
+
+    _main()
+
+
+__all__ = ["main"]
