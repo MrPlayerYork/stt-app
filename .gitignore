@@ -12,5 +12,8 @@ wheels/
 # Claude Code worktrees
 .claude/worktrees/
 
+# Shared agent resource board (tools/agent-board.sh)
+.agents/
+
 # User's reference material (not part of the app)
 reference/

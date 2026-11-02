@@ -1,0 +1,82 @@
+# Running Sub-Agents on This Project
+
+This is a **home PC**, not a server: Ryzen 7 3700X (16 threads), 31 GB RAM, RTX 4070 SUPER 12 GB (LM Studio often
+holds most of the VRAM), Bazzite (atomic Fedora). The user is working on it at the same time. Every agent shares
+it, so every agent follows the rules below. The plan they serve is [RUST_PLAN.md](RUST_PLAN.md).
+
+## Part 1 — For the orchestrator (main session)
+
+### Limits
+- **At most 10 agents at once** (user's limit). Count running ones before launching more.
+- Pick the cheapest model that will get it right (the user is paying in usage):
+  - **haiku** — mechanical, well-specified work: ports of pure functions, tests from an existing spec, small crates.
+  - **sonnet** — the default for real implementation: I/O, protocols, UI, anything needing judgement.
+  - **opus** — only where mistakes multiply: shared contracts/architecture (P1-a), hard debugging that sonnet failed.
+- Always pass `model` explicitly. (`~/.claude/settings.json` sets `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` as the fallback.)
+
+### Launching
+- One worktree per agent (`isolation: "worktree"`), `run_in_background: true`, parallel launches in one message.
+- Integration branch for the rewrite: **`rust-rewrite`**. Worktrees may be created from an older commit, so every
+  prompt starts with: `git merge --ff-only rust-rewrite` and a check that the expected commit is present.
+- Give each agent a self-contained prompt: the files/crate it **owns** (and must not leave), the contracts it codes
+  against (paste them; don't make it explore), the tests that define done, and the report format below.
+- Paste the **Agent rules** section (Part 2) into every prompt, or tell the agent to read `AGENTS.md` Part 2 first.
+
+### Integrating
+- Merge finished branches into `rust-rewrite` with `--no-ff`, run `cargo test --workspace` in the heavy slot,
+  fix shims/glue yourself if small, otherwise send the fix back to the owning agent (SendMessage) or a new one.
+- Milestones (`*-working` tags) only after the user confirms something works (see global CLAUDE.md).
+
+### Watching resources
+- `tools/agent-board.sh status` shows slot holders, load, free RAM and VRAM, and recent board messages.
+  Check it before launching a wave and when agents seem stuck.
+
+## Part 2 — Agent rules (every sub-agent follows these)
+
+### Environment
+- Rust: `cargo` from `~/.cargo/bin`. Python reference app: run only via `uv run ...` (never bare `python`/`pip`).
+- **Never** `dnf`/`rpm-ostree`/`sudo`. Missing tools → stop and report; the orchestrator asks the user about `brew`.
+- Scratch work goes in `scratch/` inside your worktree, never `/tmp`. Delete it when done.
+- Stay inside the crate/files you were assigned. Don't edit other crates, `Cargo.lock` conflicts aside.
+- No network except: crates.io via cargo, Hugging Face model downloads (in the `download` slot), and docs lookups.
+  Never call paid LLM APIs; never load/unload models on the user's running LM Studio/Ollama.
+
+### The shared board (`tools/agent-board.sh`)
+One board for all agents, stored in the **main checkout** (`.agents/`, gitignored), so it's shared across worktrees.
+Use the script path from your worktree (`tools/agent-board.sh`); it always writes to the shared location.
+Use your agent label (e.g. `P2-4`) as `AGENT`.
+
+| Slot | Capacity | Claim it for |
+|---|---|---|
+| `heavy` | 1 | Anything compiling whisper.cpp (`stt-whisper`, the `stt` binary, `--workspace` builds), `--release` builds |
+| `gpu` | 1 | Any test or run that does Whisper inference on the GPU |
+| `download` | 1 | Any download over ~200 MB (Whisper models) |
+
+```bash
+B=tools/agent-board.sh
+$B status                                   # look before doing anything expensive
+$B run heavy P2-8 "stt-whisper vulkan build" -- env CARGO_BUILD_JOBS=8 cargo build -p stt-whisper
+$B run gpu   P2-8 "turbo q5 gpu test"        -- cargo test -p stt-whisper -- --ignored
+$B note P2-6 "stt-llm: I own src/openai*.rs, P2-7 owns anthropic/google"   # short coordination messages
+$B wait-load                                # block until load < 12 and >= 4 GB RAM free
+```
+- `run` claims (waiting up to 30 min if held), runs the command, and **always releases**, even on failure.
+  Prefer it over manual `claim`/`release`. If you must `claim`, `release` in the same step you finish.
+- Claims expire automatically (heavy 60 min, gpu 20, download 45) if an agent dies; the takeover is logged.
+- Post a `note` when you start something long, change a shared contract, or are blocked. Keep notes one line.
+
+### Builds on a shared PC
+- Light work (your own crate only): `$B wait-load` first, then `cargo build/test -p <your-crate>`. The workspace
+  config sets `jobs = 2`; don't override it outside the heavy slot (10 agents × 2 jobs already fills 16 threads).
+- Never `cargo build --workspace` or `--release` outside the `heavy` slot. Inside it, `CARGO_BUILD_JOBS=8` is the max.
+- Don't depend on `stt-whisper` from any other crate; use the traits in `stt-core` and fakes in tests.
+- Shared model files: download into the shared models dir the orchestrator gives you (never per-worktree), and
+  check whether the file already exists before claiming `download`.
+- Don't run long-lived processes; stop anything you start. Use `timeout` on test runs that could hang.
+
+### Verifying and reporting
+- Done = your crate's tests pass (`cargo test -p <crate>`), `cargo clippy -p <crate>` is clean, plus any real-world
+  check your prompt asks for (in the right slot).
+- Commit on your branch: short message, blank line, `Co-Authored-By: <your model> <noreply@anthropic.com>`.
+- Final report, **under 12 lines**: branch, commit, what's done, how it was verified, contract changes, open issues.
+  The report is all the orchestrator reads, so make it complete and don't pad it.
