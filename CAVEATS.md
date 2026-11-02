@@ -14,8 +14,7 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
   the 3700X has 16 threads.
 - [ ] **Small sample:** one 20 s clip, one speaker. Try a longer clip, names/numbers/jargon, and maybe a noisy one
   before calling the rewrite done.
-- [ ] **Model default:** turbo q5_0 used about half the VRAM of f16 (1.1 GB vs 2.1 GB) with identical text. Probably the
-  default, but that needs a config decision (see the P1-a question below).
+- [x] **Model default:** q5_0 (same text as f16, about half the VRAM: 1.1 GB vs 2.1 GB). See the quantization item below.
 - [x] Build workaround (whisper-rs 0.16, brew Vulkan headers, rpath): now in AGENTS.md, "Building whisper.cpp with Vulkan".
 
 ## From the workspace skeleton (P1-a): decide before or during Phase 2
