@@ -10,7 +10,7 @@ publish.workspace = true
 [dependencies]
 stt-core.workspace = true
 thiserror.workspace = true
-cpal.workspace = true
+cpal = { workspace = true, features = ["pulseaudio"] }
 
 [dev-dependencies]
 stt-core = { workspace = true, features = ["fakes"] }
