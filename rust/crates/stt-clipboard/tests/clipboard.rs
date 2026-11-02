@@ -6,21 +6,31 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use stt_clipboard::SystemClipboard;
 use stt_core::{Clipboard, ClipboardError, ClipboardMethod};
 
+/// Tests run one at a time. Writing a fake tool while another test thread forks lets the child inherit
+/// the script's write fd, and exec then fails with ETXTBSY ("Text file busy"). The suite takes ~0.3 s.
+static SERIAL: Mutex<()> = Mutex::new(());
+
 struct Tools {
     dir: PathBuf,
+    _serial: MutexGuard<'static, ()>,
 }
 
 impl Tools {
     fn new(name: &str) -> Self {
+        let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("clipboard-{name}"));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        Self { dir }
+        Self {
+            dir,
+            _serial: serial,
+        }
     }
 
     /// A fake tool that records its argv (one per line) and stdin, then runs `body`.
