@@ -17,3 +17,6 @@ wheels/
 
 # User's reference material (not part of the app)
 reference/
+
+# Rust build output
+rust/target/

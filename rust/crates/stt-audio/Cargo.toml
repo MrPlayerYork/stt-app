@@ -1,0 +1,19 @@
+[package]
+name = "stt-audio"
+description = "Microphone listing and capture via cpal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+stt-core.workspace = true
+thiserror.workspace = true
+cpal.workspace = true
+
+[dev-dependencies]
+stt-core = { workspace = true, features = ["fakes"] }
+
+[lints]
+workspace = true

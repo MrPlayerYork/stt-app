@@ -1,0 +1,30 @@
+history_size = 5
+
+[audio]
+device_name = "USB Mic"
+samplerate = 16000
+
+[whisper]
+model = "small"
+device = "cuda"
+compute_type = "auto"
+language = ""
+models_dir = ""
+download_connections = 8
+
+[llm]
+enabled = true
+provider = "anthropic"
+model = "claude-haiku-5-5"
+base_url = ""
+api_key_env = ""
+mode = "prompt"
+preset = "mine"
+idle_ttl_seconds = 0
+unload_on_exit = false
+reasoning = "high"
+word_choice = true
+
+[llm.custom_prompts]
+zeta = "Be terse."
+mine = "Translate to French.\nKeep \"quotes\"."

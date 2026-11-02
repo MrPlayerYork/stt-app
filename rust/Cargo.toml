@@ -1,0 +1,69 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/stt-core",
+    "crates/stt-audio",
+    "crates/stt-whisper",
+    "crates/stt-download",
+    "crates/stt-llm",
+    "crates/stt-clipboard",
+    "crates/stt-calibrate",
+    "crates/stt-tui",
+    "crates/stt",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+# Internal crates
+stt-core = { path = "crates/stt-core" }
+stt-audio = { path = "crates/stt-audio" }
+stt-whisper = { path = "crates/stt-whisper" }
+stt-download = { path = "crates/stt-download" }
+stt-llm = { path = "crates/stt-llm" }
+stt-clipboard = { path = "crates/stt-clipboard" }
+stt-calibrate = { path = "crates/stt-calibrate" }
+stt-tui = { path = "crates/stt-tui" }
+
+# Serialization / config
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+toml = { version = "1.1.8", features = ["preserve_order"] }
+indexmap = { version = "2.14.2", features = ["serde"] }
+
+# Errors
+thiserror = "2.0.21"
+anyhow = "1.0.104"
+
+# Platform paths (XDG on Linux, same as Python's platformdirs)
+dirs = "7.0.0"
+
+# Secrets: `v1` (default) mode = simple `keyring::Entry::new(service, user)` API; on Linux it uses the
+# Secret Service over zbus (pure Rust, no libdbus), the same store the Python keyring uses here.
+keyring = "4.2.0"
+
+# HTTP (blocking, rustls + ring; no async runtime)
+ureq = { version = "3.5.0", features = ["json"] }
+
+# Audio
+cpal = "0.18.2"
+
+# Terminal UI (inline viewport)
+ratatui = "0.30.2"
+crossterm = "0.29.0"
+
+# Speech-to-text. ONLY stt-whisper may use this, behind its off-by-default `whisper` feature
+# (compiles whisper.cpp; heavy board slot required, see AGENTS.md).
+whisper-rs = { version = "0.16.0", features = ["vulkan"] }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "allow"

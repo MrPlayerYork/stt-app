@@ -1,0 +1,21 @@
+[package]
+name = "stt-download"
+description = "Multi-connection resumable Hugging Face model downloads"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+stt-core.workspace = true
+thiserror.workspace = true
+ureq.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+stt-core = { workspace = true, features = ["fakes"] }
+
+[lints]
+workspace = true
