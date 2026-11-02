@@ -1,0 +1,38 @@
+[project]
+name = "stt-app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Paityn", email = "74891790+MrPlayerYork@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=2.3.0",
+    "faster-whisper>=1.2.1",
+    "google-genai>=2.34.0",
+    "keyring>=25.7.0",
+    "numpy>=2.5.4",
+    "nvidia-cublas-cu12>=12.9.3.13",
+    "nvidia-cudnn-cu12>=9.27.0.42",
+    "openai>=3.42.1",
+    "platformdirs>=4.14.3",
+    "rich>=15.0.0",
+    "sounddevice>=0.5.6",
+    "tomli-w>=1.2.0",
+]
+
+[project.scripts]
+stt-app = "stt_app:main"
+
+[build-system]
+requires = ["uv_build>=0.12.0,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.uv]
+cache-dir = "<data-drive>/.uv-cache"
