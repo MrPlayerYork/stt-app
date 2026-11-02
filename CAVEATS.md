@@ -23,8 +23,9 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
   other four absent in both.
 - [x] **Model quantization setting:** decided 2026-11-01: new key `whisper.quantization` (f16 / q8_0 / q5_0),
   default q5_0. P2-8 maps missing variants to the nearest one. The `stt` binary enabling the `whisper` feature is P3-3's job.
-- [ ] **Microphone names (P2-5):** the mic name saved by the Python app may not match cpal's device names, so a saved
-  mic could go missing after switching. Needs a matching rule (or re-calibration on mismatch).
+- [x] **Microphone names (P2-5):** solved 2026-11-01. cpal's PulseAudio host (served by pipewire-pulse) reports the
+  same names the Python app saved (e.g. "Blue Snowball Analog Stereo"). `stt_audio::match_saved_device` matches exact →
+  normalised → substring; no match → re-calibrate. Details: `scratch/device-naming.md`. Confirm with your real saved mic in Phase 4.
 - [ ] **Config leniency:** unknown `device` / `provider` / `mode` / `reasoning` values now silently fall back to the
   default (Python failed instead). Fine, or should the app warn?
 - [ ] `whisper.device = "cuda"` is still what gets written (so the Python app can read the file); `"gpu"`/`"vulkan"`
@@ -37,5 +38,8 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
 - [ ] **LLM error wording (stt-llm):** `LlmError` has no free-text variant, so some messages read differently from
   Python (e.g. "HTTP 401: Authentication failed…" instead of Python's text; timeouts and connection failures use
   generic variants). Cosmetic. Fix if wanted: add `LlmError::Other(String)` and use the Python strings.
+- [ ] **Record start latency (stt-audio):** opening a PulseAudio stream takes about 1-2 s per device, so the first
+  push-to-record could miss your first word. Likely fix in Phase 3: open the mic stream once at startup and keep it
+  warm (or pre-open when the main screen shows). Check in Phase 4 testing.
 - [ ] **Unknown download size (stt-download):** now streams without resume support instead of failing like Python.
   Probably fine (HF always sends a size).
