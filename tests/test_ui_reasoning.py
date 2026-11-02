@@ -2,7 +2,8 @@ from rich.console import Console
 
 from stt_app import ui
 from stt_app.config import AppConfig
-from stt_app.ui import LLMResult, _as_result, reasoning_line
+from stt_app.llm import LLMResult
+from stt_app.ui import reasoning_line
 
 
 def render(res):
@@ -17,13 +18,6 @@ def test_line_variants():
     assert render(LLMResult("x", reasoned=False)) == "No reasoning"
     assert render(LLMResult("x")) == "Reasoning: unknown"
     assert render(LLMResult("x", reasoned=False, note="ignored")).endswith("· ignored")
-
-
-def test_as_result():
-    r = _as_result("hello")
-    assert isinstance(r, LLMResult) and r.text == "hello" and r.reasoning == ""
-    orig = LLMResult("a", "b")
-    assert _as_result(orig) is orig
 
 
 def make_app(**llm):

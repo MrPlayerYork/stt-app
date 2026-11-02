@@ -23,26 +23,14 @@ from .llm import (
     DEFAULT_MODELS,
     LOCAL_PRESETS,
     PROVIDERS,
+    REASONING_LEVELS,
     LLMError,
+    LLMResult,
     all_presets,
     make_backend,
     process,
 )
 
-# SHIM: LLMResult / REASONING_LEVELS are exported by stt_app.llm once the reasoning work is merged.
-# The fallback definitions and _as_result's str handling can be removed after that merge.
-try:
-    from .llm import REASONING_LEVELS, LLMResult
-except ImportError:
-    REASONING_LEVELS = ("default", "off", "low", "medium", "high")
-
-    @dataclass
-    class LLMResult:
-        text: str
-        reasoning: str = ""
-        reasoning_tokens: int | None = None
-        reasoned: bool | None = None  # None = provider can't tell
-        note: str = ""
 from . import keys
 from .download import DownloadError, ensure_model
 from .transcribe import MODELS, Transcriber, TranscriberError
@@ -57,11 +45,6 @@ class HistoryItem:
     final: str
     mode: str
     reasoning: str = ""
-
-
-def _as_result(x) -> LLMResult:
-    """Wrap a plain str (older process()) in an LLMResult; pass LLMResults through."""
-    return x if isinstance(x, LLMResult) else LLMResult(text=str(x))
 
 
 def reasoning_line(res: LLMResult) -> Text:
@@ -211,10 +194,10 @@ class App:
         if not llm.enabled:
             return ""
         out = ""
-        reasoning = getattr(llm, "reasoning", "default")
+        reasoning = llm.reasoning
         if reasoning != "default":
             out += f" \u00b7 reasoning: {reasoning}"
-        if getattr(llm, "word_choice", False) and self.mode_key() == "prompt":
+        if llm.word_choice and self.mode_key() == "prompt":
             out += " \u00b7 word choice"
         return out
 
@@ -402,7 +385,7 @@ class App:
         self.llm_used = True
         try:
             with self.console.status("Processing with the LLM..."):
-                res = _as_result(process(self.cfg.llm, self.api_key(), text))
+                res = process(self.cfg.llm, self.api_key(), text)
             self.last_result = res
             return res.text, label
         except LLMError as e:
@@ -611,8 +594,8 @@ class App:
                 ("7", "Custom prompts", f"{len(llm.custom_prompts)} defined"),
                 ("8", "Idle unload (TTL)", ttl_label(llm.idle_ttl_seconds)),
                 ("9", "Unload model when quitting", "yes" if llm.unload_on_exit else "no"),
-                ("r", "Reasoning", getattr(llm, "reasoning", "default")),
-                ("w", "Word choice in Prompt Mode", "on" if getattr(llm, "word_choice", False) else "off"),
+                ("r", "Reasoning", llm.reasoning),
+                ("w", "Word choice in Prompt Mode", "on" if llm.word_choice else "off"),
                 ("b", "Back", ""),
             ]:
                 t.add_row(Text(k, style="cyan"), label, Text(val))
@@ -635,7 +618,7 @@ class App:
         self.save()
 
     def set_reasoning(self) -> None:
-        cur = getattr(self.cfg.llm, "reasoning", "default")
+        cur = self.cfg.llm.reasoning
         more = "more reasoning = slower, possibly better"
         descs = {
             "default": "don't send anything; the model decides",
@@ -654,7 +637,7 @@ class App:
 
     def toggle_word_choice(self) -> None:
         llm = self.cfg.llm
-        llm.word_choice = not getattr(llm, "word_choice", False)
+        llm.word_choice = not llm.word_choice
         self.console.print("[dim]Word choice: Prompt Mode may replace words that don't fit the context; "
                            "Cleanup always stays word-for-word.[/]")
         self.save()
@@ -737,7 +720,7 @@ class App:
         self.llm_used = True
         try:
             with self.console.status("Testing..."):
-                res = _as_result(process(self.cfg.llm, self.api_key(), SAMPLE_TEXT))
+                res = process(self.cfg.llm, self.api_key(), SAMPLE_TEXT)
             self.console.print(Panel(Text(res.text or "(empty response)"), title="Result", border_style="green"))
             self.console.print(reasoning_line(res))
         except LLMError as e:
