@@ -28,6 +28,21 @@ from .llm import (
     make_backend,
     process,
 )
+
+# SHIM: LLMResult / REASONING_LEVELS are exported by stt_app.llm once the reasoning work is merged.
+# The fallback definitions and _as_result's str handling can be removed after that merge.
+try:
+    from .llm import REASONING_LEVELS, LLMResult
+except ImportError:
+    REASONING_LEVELS = ("default", "off", "low", "medium", "high")
+
+    @dataclass
+    class LLMResult:
+        text: str
+        reasoning: str = ""
+        reasoning_tokens: int | None = None
+        reasoned: bool | None = None  # None = provider can't tell
+        note: str = ""
 from . import keys
 from .download import DownloadError, ensure_model
 from .transcribe import MODELS, Transcriber, TranscriberError
@@ -41,6 +56,29 @@ class HistoryItem:
     raw: str
     final: str
     mode: str
+    reasoning: str = ""
+
+
+def _as_result(x) -> LLMResult:
+    """Wrap a plain str (older process()) in an LLMResult; pass LLMResults through."""
+    return x if isinstance(x, LLMResult) else LLMResult(text=str(x))
+
+
+def reasoning_line(res: LLMResult) -> Text:
+    """One dim status line describing the reasoning behind an LLM result."""
+    tokens = res.reasoning_tokens
+    if res.reasoning:
+        n = f"{tokens:,} tokens" if tokens is not None else "captured"
+        line = f"Reasoning: {n} \u00b7 [v] view"
+    elif tokens:
+        line = f"Reasoning: {tokens:,} tokens (text not exposed by provider)"
+    elif res.reasoned is False:
+        line = "No reasoning"
+    else:
+        line = "Reasoning: unknown"
+    if res.note:
+        line += f" \u00b7 {res.note}"
+    return Text(line, style="dim")
 
 
 class ModelLoader:
@@ -100,6 +138,7 @@ class App:
         self.console = console or Console()
         self.history: deque[HistoryItem] = deque(maxlen=max(1, cfg.history_size))
         self.last: HistoryItem | None = None
+        self.last_result: LLMResult | None = None  # LLM result of the last dictation (None = raw/failed)
         self.loader: ModelLoader | None = None
         self.llm_used = False  # set once this session has sent text to the LLM
 
@@ -164,8 +203,35 @@ class App:
         t = Table.grid(padding=(0, 2))
         t.add_row(Text("Microphone", style="bold"), Text(self.cfg.audio.device_name or "(system default)"))
         t.add_row(Text("Whisper", style="bold"), self.loader.status if self.loader else Text("-"))
-        t.add_row(Text("Mode", style="bold"), Text(self.mode_label()))
+        t.add_row(Text("Mode", style="bold"), Text(self.mode_label() + self.mode_extras()))
         return Panel(t, title="[bold]Speech to Text[/]", border_style="blue")
+
+    def mode_extras(self) -> str:
+        llm = self.cfg.llm
+        if not llm.enabled:
+            return ""
+        out = ""
+        reasoning = getattr(llm, "reasoning", "default")
+        if reasoning != "default":
+            out += f" \u00b7 reasoning: {reasoning}"
+        if getattr(llm, "word_choice", False) and self.mode_key() == "prompt":
+            out += " \u00b7 word choice"
+        return out
+
+    def has_reasoning(self) -> bool:
+        return bool(self.last_result and self.last_result.reasoning)
+
+    def view_reasoning(self, text: str | None = None) -> None:
+        text = text if text is not None else (self.last_result.reasoning if self.last_result else "")
+        if not text:
+            return
+        panel = Panel(Text(text), title="Reasoning", border_style="dim")
+        if len(text.splitlines()) + 4 > self.console.size.height:
+            with self.console.pager():
+                self.console.print(panel)
+        else:
+            self.console.print(panel)
+            self.pause()
 
     def result_panels(self, item: HistoryItem) -> list[Panel]:
         panels = [Panel(Text(item.raw), title="Raw transcript", border_style="dim")]
@@ -175,6 +241,8 @@ class App:
 
     def show_result(self, item: HistoryItem) -> None:
         self.console.print(*self.result_panels(item))
+        if self.last_result is not None and item is self.last:
+            self.console.print(reasoning_line(self.last_result))
 
     def choose(self, label: str, choices: list[str], default: str) -> str:
         """Single-keypress pick; Enter selects the default (which may be "")."""
@@ -190,14 +258,18 @@ class App:
 
     def main_screen(self) -> str:
         """Show the main screen and return the chosen key; the header updates live while loading."""
-        choices = ["r", "m", "h", "s", "q"] + (["p"] if self.mode_key() == "prompt" else [])
+        choices = (["r", "m", "h", "s", "q"] + (["p"] if self.mode_key() == "prompt" else [])
+                   + (["v"] if self.has_reasoning() else []))
         menu = Text("[r]ecord  [m]ode  " + ("[p]reset  " if "p" in choices else "")
+                    + ("[v] reasoning  " if "v" in choices else "")
                     + "[h]istory  [s]ettings  [q]uit", style="bold")
 
         def view() -> Group:
             parts = [self.header()]
             if self.last:
                 parts += [Text("Last result:", style="dim"), *self.result_panels(self.last)]
+                if self.last_result is not None:
+                    parts.append(reasoning_line(self.last_result))
             return Group(*parts, menu)
 
         loader = self.loader
@@ -230,7 +302,7 @@ class App:
                 choice = self.main_screen()
                 if choice == "q":
                     break
-                {"r": self.record, "m": self.cycle_mode, "p": self.choose_preset,
+                {"r": self.record, "m": self.cycle_mode, "p": self.choose_preset, "v": self.view_reasoning,
                  "h": self.show_history, "s": self.settings}[choice]()
         except (KeyboardInterrupt, EOFError):
             self.console.print()
@@ -304,8 +376,9 @@ class App:
             self.console.print("[yellow]Heard nothing.[/]")
             self.pause()
             return
+        self.last_result = None
         final, label = self.postprocess(text)
-        item = HistoryItem(text, final, label)
+        item = HistoryItem(text, final, label, self.last_result.reasoning if self.last_result else "")
         self.history.appendleft(item)
         self.last = item
         self.copy_text(final)
@@ -329,7 +402,9 @@ class App:
         self.llm_used = True
         try:
             with self.console.status("Processing with the LLM..."):
-                return process(self.cfg.llm, self.api_key(), text), label
+                res = _as_result(process(self.cfg.llm, self.api_key(), text))
+            self.last_result = res
+            return res.text, label
         except LLMError as e:
             self.console.print(f"[red]LLM error: {e}[/] [dim](using the raw text)[/]")
             return text, "Raw (LLM failed)"
@@ -382,7 +457,10 @@ class App:
             if not raw:
                 return
             if raw.isdigit() and 1 <= int(raw) <= len(self.history):
-                self.copy_text(self.history[int(raw) - 1].final)
+                h = self.history[int(raw) - 1]
+                self.copy_text(h.final)
+                if h.reasoning and self.choose("[v] view reasoning, Enter to continue", ["v"], "") == "v":
+                    self.view_reasoning(h.reasoning)
             else:
                 self.console.print("[red]Not a valid number.[/]")
 
@@ -518,7 +596,8 @@ class App:
         llm = self.cfg.llm
         actions = {"1": self.toggle_llm, "2": self.set_provider, "3": self.set_base_url,
                    "4": self.set_api_key, "5": self.set_model, "6": self.test_llm, "7": self.custom_prompts,
-                   "8": self.set_idle_ttl, "9": self.toggle_unload_on_exit}
+                   "8": self.set_idle_ttl, "9": self.toggle_unload_on_exit,
+                   "r": self.set_reasoning, "w": self.toggle_word_choice}
         while True:
             key_state = "set" if self.api_key() else "not set"
             t = Table.grid(padding=(0, 2))
@@ -532,6 +611,8 @@ class App:
                 ("7", "Custom prompts", f"{len(llm.custom_prompts)} defined"),
                 ("8", "Idle unload (TTL)", ttl_label(llm.idle_ttl_seconds)),
                 ("9", "Unload model when quitting", "yes" if llm.unload_on_exit else "no"),
+                ("r", "Reasoning", getattr(llm, "reasoning", "default")),
+                ("w", "Word choice in Prompt Mode", "on" if getattr(llm, "word_choice", False) else "off"),
                 ("b", "Back", ""),
             ]:
                 t.add_row(Text(k, style="cyan"), label, Text(val))
@@ -551,6 +632,31 @@ class App:
             self.console.print("[red]Enter seconds (120) or a duration like 90s, 2m, 1h.[/]")
             return
         llm.idle_ttl_seconds = secs
+        self.save()
+
+    def set_reasoning(self) -> None:
+        cur = getattr(self.cfg.llm, "reasoning", "default")
+        more = "more reasoning = slower, possibly better"
+        descs = {
+            "default": "don't send anything; the model decides",
+            "off": "ask the model not to reason (if supported)",
+            "low": more, "medium": more, "high": more,
+        }
+        opts = {str(i): lvl for i, lvl in enumerate(REASONING_LEVELS, 1)}
+        for k, lvl in opts.items():
+            self.console.print(Text.assemble((f"  {k} ", "cyan"), f"{lvl} \u2014 {descs.get(lvl, '')}",
+                                             (" (current)" if lvl == cur else "", "green")))
+        self.console.print("[dim]Local models only honor this if they support it.[/]")
+        c = self.choose("Reasoning (Enter keeps)", list(opts), "")
+        if c in opts:
+            self.cfg.llm.reasoning = opts[c]
+            self.save()
+
+    def toggle_word_choice(self) -> None:
+        llm = self.cfg.llm
+        llm.word_choice = not getattr(llm, "word_choice", False)
+        self.console.print("[dim]Word choice: Prompt Mode may replace words that don't fit the context; "
+                           "Cleanup always stays word-for-word.[/]")
         self.save()
 
     def toggle_unload_on_exit(self) -> None:
@@ -631,8 +737,9 @@ class App:
         self.llm_used = True
         try:
             with self.console.status("Testing..."):
-                out = process(self.cfg.llm, self.api_key(), SAMPLE_TEXT)
-            self.console.print(Panel(Text(out or "(empty response)"), title="Result", border_style="green"))
+                res = _as_result(process(self.cfg.llm, self.api_key(), SAMPLE_TEXT))
+            self.console.print(Panel(Text(res.text or "(empty response)"), title="Result", border_style="green"))
+            self.console.print(reasoning_line(res))
         except LLMError as e:
             self.console.print(f"[red]Test failed: {e}[/]")
 
