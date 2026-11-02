@@ -10,6 +10,8 @@ Run the app (real terminal only): `uv run stt-app`
 
 - Python via `uv` only. User settings live in `~/.config/stt-app/config.toml`; API keys in the system keyring.
 - `reference/` is the user's material: gitignored, never commit it.
-- Rewrite status: Phases 0-1 done (2026-11-01; Whisper/Vulkan gate passed, user greenlit). Next: RUST_PLAN.md Phase 2.
+- Rewrite status: Phases 0-2 done (2026-11-01; gate passed, all 8 crates merged and green). Next: RUST_PLAN.md Phase 3
+  (orchestrator first defines the `App` state struct + stt-tui module boundaries, then launches P3-1..3).
   Open questions to settle along the way: [CAVEATS.md](CAVEATS.md).
-- Rust test command (from `rust/`, heavy slot): `cargo test --workspace`
+- Rust test command (from `rust/`, heavy slot): `cargo test --workspace --no-fail-fast`; GPU (gpu slot, needs
+  `rust/vk-sdk` symlinks per AGENTS.md): `cargo test -p stt-whisper --features whisper --test gpu -- --ignored`
