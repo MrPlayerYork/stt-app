@@ -19,10 +19,11 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
 - [x] Build workaround (whisper-rs 0.16, brew Vulkan headers, rpath): now in AGENTS.md, "Building whisper.cpp with Vulkan".
 
 ## From the workspace skeleton (P1-a): decide before or during Phase 2
-- [ ] **Keyring compatibility (P2-1):** the Rust `keyring` crate (v4, `v1` mode) must read API keys the Python app
-  stored in Secret Service. Needs a real check against your existing keys.
-- [ ] **Model quantization setting (P2-8):** new additive config key for ggml quantization (f16 / q8_0 / q5_0), or
-  hard-code q5_0? And does the `stt` binary enable `stt-whisper`'s `whisper` feature or depend on it directly?
+- [x] **Keyring compatibility (P2-1):** verified 2026-11-01. Rust (`keyring` 4.2, Secret Service over zbus) reads
+  the same entries as Python: `openai_compat` present and identical (hash compared, value never shown); the
+  other four absent in both.
+- [x] **Model quantization setting:** decided 2026-11-01: new key `whisper.quantization` (f16 / q8_0 / q5_0),
+  default q5_0. P2-8 maps missing variants to the nearest one. The `stt` binary enabling the `whisper` feature is P3-3's job.
 - [ ] **Microphone names (P2-5):** the mic name saved by the Python app may not match cpal's device names, so a saved
   mic could go missing after switching. Needs a matching rule (or re-calibration on mismatch).
 - [ ] **Config leniency:** unknown `device` / `provider` / `mode` / `reasoning` values now silently fall back to the
