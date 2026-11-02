@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import LLMBackend, LLMError
+from .base import REASONING_LEVELS, LLMBackend, LLMError, LLMResult
 from .prompts import CLEANUP_PROMPT, PRESETS, all_presets, system_prompt_for
 
 if TYPE_CHECKING:
@@ -31,6 +31,7 @@ DEFAULT_MODELS = {
 
 def make_backend(cfg: LLMConfig, api_key: str | None) -> LLMBackend:
     p = cfg.provider
+    reasoning = getattr(cfg, "reasoning", "default")
     if p not in PROVIDERS:
         raise LLMError(f"Unknown LLM provider: {p!r}")
     if p != "openai_compat" and not api_key:
@@ -40,25 +41,27 @@ def make_backend(cfg: LLMConfig, api_key: str | None) -> LLMBackend:
 
         if not cfg.base_url:
             raise LLMError("No base URL set for the local server")
-        return OpenAICompatBackend(cfg.model, api_key, cfg.base_url, cfg.idle_ttl_seconds)
+        return OpenAICompatBackend(cfg.model, api_key, cfg.base_url, cfg.idle_ttl_seconds, reasoning)
     if p == "openai":
         from .openai_compat import OpenAICompatBackend
 
-        return OpenAICompatBackend(cfg.model, api_key)
+        return OpenAICompatBackend(cfg.model, api_key, reasoning=reasoning)
     if p == "anthropic":
         from .anthropic_backend import AnthropicBackend
 
-        return AnthropicBackend(cfg.model, api_key)  # type: ignore[arg-type]
+        return AnthropicBackend(cfg.model, api_key, reasoning)  # type: ignore[arg-type]
     from .google_backend import GoogleBackend
 
-    return GoogleBackend(cfg.model, api_key)  # type: ignore[arg-type]
+    return GoogleBackend(cfg.model, api_key, reasoning)  # type: ignore[arg-type]
 
 
-def process(cfg: LLMConfig, api_key: str | None, text: str) -> str:
-    return make_backend(cfg, api_key).complete(system_prompt_for(cfg), text).strip()
+def process(cfg: LLMConfig, api_key: str | None, text: str) -> LLMResult:
+    r = make_backend(cfg, api_key).complete(system_prompt_for(cfg), text)
+    r.text = r.text.strip()
+    return r
 
 
 __all__ = [
-    "PROVIDERS", "LOCAL_PRESETS", "DEFAULT_MODELS", "LLMBackend", "LLMError", "CLEANUP_PROMPT",
+    "LLMResult", "REASONING_LEVELS", "PROVIDERS", "LOCAL_PRESETS", "DEFAULT_MODELS", "LLMBackend", "LLMError", "CLEANUP_PROMPT",
     "PRESETS", "all_presets", "system_prompt_for", "make_backend", "process",
 ]

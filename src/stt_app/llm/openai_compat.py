@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 import openai
 
-from .base import TEMPERATURE, TIMEOUT_S, LLMError
+from .base import TEMPERATURE, TIMEOUT_S, LLMError, LLMResult, split_think
 
 
 def _wrap(e: Exception, base_url: str | None) -> LLMError:
@@ -88,9 +88,15 @@ def detect_server(base_url: str, api_key: str | None = None) -> str:
 
 class OpenAICompatBackend:
     def __init__(
-        self, model: str, api_key: str | None, base_url: str | None = None, idle_ttl_seconds: int = 0
+        self,
+        model: str,
+        api_key: str | None,
+        base_url: str | None = None,
+        idle_ttl_seconds: int = 0,
+        reasoning: str = "default",
     ) -> None:
         self.model = model
+        self.reasoning = reasoning or "default"
         self.base_url = base_url or None
         self.api_key = api_key
         self.idle_ttl_seconds = max(0, int(idle_ttl_seconds or 0))
@@ -112,29 +118,79 @@ class OpenAICompatBackend:
         _http("POST", _root(self.base_url) + "/api/generate", self.api_key,
               {"model": self.model, "keep_alive": self.idle_ttl_seconds}, UNLOAD_TIMEOUT_S)
 
-    def complete(self, system_prompt: str, text: str) -> str:
+    def _efforts(self) -> list[str | None]:
+        # reasoning_effort candidates, tried in order. Mapping: low/medium/high pass through; "off" -> "none"
+        # (OpenAI gpt-5.1+, Ollama; official OpenAI also tries "minimal" for older gpt-5 models). Servers
+        # that reject the field fall through to None (nothing sent) and the result notes it.
+        if self.reasoning == "default":
+            return [None]
+        if self.reasoning == "off":
+            return ["none"] if self.base_url else ["none", "minimal"]
+        return [self.reasoning]
+
+    def _create(self, kwargs: dict):
+        try:
+            return self._client.chat.completions.create(temperature=TEMPERATURE, **kwargs)
+        except openai.BadRequestError as e:
+            # some models (e.g. reasoning ones) only accept the default temperature
+            if "temperature" not in str(e).lower():
+                raise
+            return self._client.chat.completions.create(**kwargs)
+
+    def complete(self, system_prompt: str, text: str) -> LLMResult:
         if not self.model:
             raise LLMError("No model selected")
-        kwargs = dict(
+        kwargs: dict = dict(
             model=self.model,
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": text}],
         )
         use_ttl = self.idle_ttl_seconds > 0 and self.base_url is not None and self.server_kind == "lmstudio"
-        if use_ttl:
-            kwargs["extra_body"] = {"ttl": self.idle_ttl_seconds}  # seconds; LM Studio applies it to JIT loads
+        extra = {"ttl": self.idle_ttl_seconds} if use_ttl else {}  # seconds; LM Studio applies it to JIT loads
+        note = ""
         try:
-            try:
-                r = self._client.chat.completions.create(temperature=TEMPERATURE, **kwargs)
-            except openai.BadRequestError as e:
-                # some models (e.g. reasoning ones) only accept the default temperature
-                if "temperature" not in str(e).lower():
-                    raise
-                r = self._client.chat.completions.create(**kwargs)
+            candidates = self._efforts()
+            if candidates != [None]:
+                candidates.append(None)
+            for i, effort in enumerate(candidates):
+                k = dict(kwargs)
+                if effort is not None:
+                    k["reasoning_effort"] = effort
+                if extra:
+                    k["extra_body"] = extra
+                try:
+                    r = self._create(k)
+                    break
+                except openai.BadRequestError as e:
+                    if effort is None or "reasoning" not in str(e).lower() and "effort" not in str(e).lower():
+                        raise
+                    if candidates[i + 1] is None:
+                        note = "server ignored reasoning setting"
         except Exception as e:
             raise _wrap(e, self.base_url) from e
         if self.idle_ttl_seconds > 0 and self.base_url is not None and self.server_kind == "ollama":
             self._set_ollama_keep_alive()
-        return (r.choices[0].message.content or "") if r.choices else ""
+        return self._parse(r, note)
+
+    @staticmethod
+    def _parse(r, note: str = "") -> LLMResult:
+        msg = r.choices[0].message if r.choices else None
+        content = (getattr(msg, "content", None) or "") if msg else ""
+        # LM Studio / vLLM / llama-server: reasoning_content; Ollama /v1 and others: reasoning
+        reasoning = ""
+        for name in ("reasoning_content", "reasoning"):
+            v = getattr(msg, name, None) if msg else None
+            if isinstance(v, str) and v.strip():
+                reasoning = v.strip()
+                break
+        answer, inline = split_think(content)
+        if inline:
+            reasoning = f"{reasoning}\n\n{inline}".strip() if reasoning else inline
+        tokens = None
+        details = getattr(getattr(r, "usage", None), "completion_tokens_details", None)
+        if details is not None and getattr(details, "reasoning_tokens", None) is not None:
+            tokens = int(details.reasoning_tokens)
+        reasoned = True if reasoning or (tokens or 0) > 0 else (False if tokens == 0 else None)
+        return LLMResult(answer, reasoning, tokens, reasoned, note)
 
     def list_models(self) -> list[str]:
         try:

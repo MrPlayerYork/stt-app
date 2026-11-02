@@ -86,7 +86,7 @@ def test_detection(server):
 
 def test_lmstudio_sends_ttl(server):
     url, log = server("lmstudio")
-    assert process(cfg_for(url, idle_ttl_seconds=120), "tok", "hi") == "ok"
+    assert process(cfg_for(url, idle_ttl_seconds=120), "tok", "hi").text == "ok"
     assert chat_bodies(log)[0]["ttl"] == 120
 
 
@@ -138,7 +138,7 @@ def test_detection_failure_still_completes(server, monkeypatch):
 
     monkeypatch.setattr(oc, "_http", boom)
     assert detect_server(url) == "other"
-    assert process(cfg_for(url, idle_ttl_seconds=120), None, "hi") == "ok"
+    assert process(cfg_for(url, idle_ttl_seconds=120), None, "hi").text == "ok"
 
 
 def test_detection_cached(server):
