@@ -59,3 +59,33 @@ def test_cbreak_on_non_tty_is_noop():
     finally:
         os.close(r)
         os.close(w)
+
+
+
+class _Out:
+    def __init__(self):
+        self.text = ""
+
+    def write(self, s):
+        self.text += s
+
+    def flush(self):
+        pass
+
+
+# Bytes are written after entering cbreak so the pty line discipline doesn't pre-process them.
+# Ctrl+C isn't testable here: with ISIG on, the pty turns it into a signal instead of a byte.
+def test_secret_paste_is_masked(pty_pair):
+    master, slave = pty_pair
+    out = _Out()
+    with keys.cbreak(slave):
+        os.write(master, b"\x1b[200~sk-abc123\x1b[201~\r")  # bracketed paste
+        assert keys.read_secret(slave, out) == "sk-abc123"
+    assert out.text == "*" * 9 + "\n"
+
+
+def test_secret_backspace_and_clear(pty_pair):
+    master, slave = pty_pair
+    with keys.cbreak(slave):
+        os.write(master, b"junk\x15ab\x7fc\r")
+        assert keys.read_secret(slave, _Out()) == "ac"

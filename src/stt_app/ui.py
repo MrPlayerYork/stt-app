@@ -136,6 +136,14 @@ class App:
     def ask(self, prompt: str, **kw) -> str:
         return Prompt.ask(prompt, console=self.console, **kw)
 
+    def ask_secret(self, prompt: str) -> str:
+        """Masked entry that echoes '*' per character, then confirms the length (never the value)."""
+        self.console.print(f"{prompt}: ", end="")
+        secret = keys.read_secret().strip()
+        if secret:
+            self.console.print(f"[dim]Received {len(secret)} characters.[/]")
+        return secret
+
     def pause(self) -> None:
         self.ask("Press Enter to continue", default="", show_default=False)
 
@@ -446,10 +454,10 @@ class App:
             self.console.print("[red]Enter a number from 1 to 32.[/]")
 
     def set_hf_token(self) -> None:
-        key = self.ask("Hugging Face token (Enter to keep)", password=True, default="", show_default=False)
-        if key.strip():
+        key = self.ask_secret("Hugging Face token (paste, then Enter; Enter alone keeps)")
+        if key:
             try:
-                set_api_key("huggingface", key.strip())
+                set_api_key("huggingface", key)
                 self.console.print("[green]Token stored.[/]")
             except Exception as e:  # keyring backends raise many types
                 self.console.print(f"[red]Could not store the token in the keyring: {e}[/]")
@@ -551,10 +559,10 @@ class App:
     def set_api_key(self) -> None:
         llm = self.cfg.llm
         self.console.print(f"Key currently {'set' if self.api_key() else 'not set'} for {PROVIDERS[llm.provider]}.")
-        key = self.ask("New API key (Enter to keep)", password=True, default="", show_default=False)
-        if key.strip():
+        key = self.ask_secret("New API key (paste, then Enter; Enter alone keeps)")
+        if key:
             try:
-                set_api_key(llm.provider, key.strip())
+                set_api_key(llm.provider, key)
                 self.console.print("[green]Key stored.[/]")
             except Exception as e:  # keyring backends raise many types
                 self.console.print(f"[red]Could not store the key in the keyring: {e}[/]")
