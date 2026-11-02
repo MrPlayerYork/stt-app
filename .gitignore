@@ -20,3 +20,6 @@ reference/
 
 # Rust build output
 rust/target/
+
+# Fake Vulkan SDK dir for the whisper.cpp build (symlinks into brew, see AGENTS.md)
+rust/vk-sdk/
