@@ -22,6 +22,13 @@ CLEANUP_PROMPT = (
     + _OUTPUT
 )
 
+WORD_CHOICE_ADDENDUM = (
+    " The transcript may also contain words that were heard correctly but don't fit the context, such as "
+    "slips, odd word picks, or placeholder words. When a word clearly doesn't fit, replace it with the word "
+    "the speaker most plausibly meant or a better-fitting word that keeps the meaning. Don't change words "
+    "that fit, don't invent facts, and when unsure keep the original."
+)
+
 PRESETS: dict[str, tuple[str, str]] = {
     "deramble": (
         "De-ramble",
@@ -55,8 +62,12 @@ def system_prompt_for(cfg: LLMConfig) -> str:
         return CLEANUP_PROMPT
     custom = getattr(cfg, "custom_prompts", None) or {}
     if cfg.preset in custom:
-        return custom[cfg.preset]
-    return PRESETS.get(cfg.preset, PRESETS["deramble"])[1]
+        prompt = custom[cfg.preset]
+    else:
+        prompt = PRESETS.get(cfg.preset, PRESETS["deramble"])[1]
+    if getattr(cfg, "word_choice", False):
+        prompt += WORD_CHOICE_ADDENDUM
+    return prompt
 
 
 def all_presets(cfg: LLMConfig) -> dict[str, str]:

@@ -11,6 +11,7 @@ import platformdirs
 import tomli_w
 
 SERVICE = "stt-app"
+REASONING_LEVELS = ("default", "off", "low", "medium", "high")
 
 
 @dataclass
@@ -41,6 +42,8 @@ class LLMConfig:
     custom_prompts: dict[str, str] = field(default_factory=dict)  # name -> system prompt
     idle_ttl_seconds: int = 120  # local servers: unload the model after this much idle time; 0 = server default
     unload_on_exit: bool = False  # local servers: ask the server to unload the model when the app quits
+    reasoning: str = "default"  # "default" | "off" | "low" | "medium" | "high"
+    word_choice: bool = False  # Prompt Mode: also replace words that clearly don't fit the context
 
 
 @dataclass
@@ -78,10 +81,13 @@ def load_config() -> AppConfig | None:
         return None
     with path.open("rb") as f:
         raw = tomllib.load(f)
+    llm = _section(LLMConfig, raw.get("llm", {}))
+    if llm.reasoning not in REASONING_LEVELS:
+        llm.reasoning = "default"
     return AppConfig(
         audio=_section(AudioConfig, raw.get("audio", {}), nullable=("device_name",)),
         whisper=_section(WhisperConfig, raw.get("whisper", {}), nullable=("language",)),
-        llm=_section(LLMConfig, raw.get("llm", {})),
+        llm=llm,
         history_size=raw.get("history_size", 20),
     )
 
