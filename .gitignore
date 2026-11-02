@@ -11,3 +11,6 @@ wheels/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# User's reference material (not part of the app)
+reference/
