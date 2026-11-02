@@ -1,0 +1,5 @@
+target/
+*.bin
+*.wav
+__pycache__/
+vk-sdk/

@@ -1,0 +1,8 @@
+audio: 20.20s; config model=large-v3-turbo device=auto compute=auto lang=en
+LOAD_S 3.434 (large-v3-turbo on cuda (int8_float16))
+RUN 1 TRANSCRIBE_S 0.305
+RUN 2 TRANSCRIBE_S 0.245
+RUN 3 TRANSCRIBE_S 0.253
+BEST_S 0.245
+TEXT: This is a test. I am making sure that the audio works correctly on both models so that we can compare them. I don't know if it will work, but I hope this audio becomes useful in some way, shape, or form.
+VRAM_MIB baseline=2456 peak=3717 delta=1261

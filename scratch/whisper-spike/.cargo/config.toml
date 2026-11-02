@@ -1,0 +1,14 @@
+[build]
+jobs = 2
+rustc-wrapper = "sccache"
+rustflags = ["-L", "/home/linuxbrew/.linuxbrew/lib", "-C", "link-arg=-Wl,-rpath,/home/linuxbrew/.linuxbrew/lib"]
+
+[env]
+PKG_CONFIG_PATH = "/home/linuxbrew/.linuxbrew/lib/pkgconfig"
+SCCACHE_DIR = "<data-drive>/.sccache"
+CMAKE_GENERATOR = "Ninja"
+CMAKE_C_COMPILER_LAUNCHER = "sccache"
+CMAKE_CXX_COMPILER_LAUNCHER = "sccache"
+VULKAN_SDK = { value = "vk-sdk", relative = true }
+CMAKE_INCLUDE_PATH = "/home/linuxbrew/.linuxbrew/Cellar/vulkan-headers/1.4.363.0/include"
+CMAKE_LIBRARY_PATH = "/home/linuxbrew/.linuxbrew/lib"

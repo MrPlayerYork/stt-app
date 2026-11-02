@@ -1,0 +1,10 @@
+[package]
+name = "whisper-spike"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+whisper-rs = { version = "0.16", features = ["vulkan"] }
+hound = "3"
+
+[workspace]
