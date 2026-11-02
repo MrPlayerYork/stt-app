@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import sys
 import threading
 import time
 from collections import deque
@@ -502,10 +503,14 @@ def first_run(app: App) -> None:
 
 def main() -> None:
     console = Console()
+    if not sys.stdin.isatty():
+        console.print("[red]stt-app needs an interactive terminal (stdin is not a TTY).[/]")
+        sys.exit(1)
     try:
         cfg = load_config()
         app = App(cfg or AppConfig(), console)
-        if cfg is None:
+        # Also re-run when a previous first run ended without choosing a mic.
+        if cfg is None or cfg.audio.device_name is None:
             first_run(app)
         app.run()
     except KeyboardInterrupt:
