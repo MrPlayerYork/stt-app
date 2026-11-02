@@ -71,7 +71,14 @@ $B wait-load                                # block until load < 12 and >= 4 GB 
 - Never `cargo build --workspace` or `--release` outside the `heavy` slot. Inside it, `CARGO_BUILD_JOBS=8` is the max.
 - Don't depend on `stt-whisper` from any other crate; use the traits in `stt-core` and fakes in tests.
 - Shared model files: download into the shared models dir the orchestrator gives you (never per-worktree), and
-  check whether the file already exists before claiming `download`.
+  check whether the file already exists before claiming `download`. whisper.cpp ggml files go in
+  `<data-drive>/stt-models`.
+- **Downloads use the multi-connection downloader, never single-connection `curl`/`wget`.** Until `stt-download`
+  is ported, use the Python app's `download_file()` (a port of `reference/hf_downloader.py`: 8 connections,
+  resume via `.part` + `.progress.json`) through the main checkout's venv, in the `download` slot:
+  `uv run --project <main checkout> python -I -c "from pathlib import Path; from stt_app.download import download_file; download_file('<url>', Path('<dest>'), connections=8)"`.
+  It skips any existing `dest`, so delete partial files left by other tools first. Don't run
+  `reference/hf_downloader.py` itself (it writes a config into `reference/` and nests files by publisher).
 - Don't run long-lived processes; stop anything you start. Use `timeout` on test runs that could hang.
 
 ### Verifying and reporting
