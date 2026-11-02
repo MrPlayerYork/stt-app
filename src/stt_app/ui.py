@@ -101,6 +101,7 @@ class App:
         self.history: deque[HistoryItem] = deque(maxlen=max(1, cfg.history_size))
         self.last: HistoryItem | None = None
         self.loader: ModelLoader | None = None
+        self.llm_used = False  # set once this session has sent text to the LLM
 
     # ---- helpers -------------------------------------------------------
 
@@ -233,7 +234,21 @@ class App:
                  "h": self.show_history, "s": self.settings}[choice]()
         except (KeyboardInterrupt, EOFError):
             self.console.print()
+        self.unload_llm()
         self.console.print("Bye.")
+
+    def unload_llm(self) -> None:
+        """On quit: ask the local server to unload the model, if enabled and the LLM was used."""
+        llm = self.cfg.llm
+        if not (llm.unload_on_exit and self.llm_used and llm.provider == "openai_compat" and llm.model):
+            return
+        try:
+            with self.console.status("Unloading the LLM..."):
+                make_backend(llm, self.api_key()).unload()
+        except (LLMError, KeyboardInterrupt) as e:
+            self.console.print(f"[yellow]Could not unload the LLM: {e or 'interrupted'}[/]")
+        except Exception as e:
+            self.console.print(f"[yellow]Could not unload the LLM: {e}[/]")
 
     # ---- recording -----------------------------------------------------
 
@@ -311,6 +326,7 @@ class App:
         label = self.mode_label()
         if not self.cfg.llm.enabled:
             return text, label
+        self.llm_used = True
         try:
             with self.console.status("Processing with the LLM..."):
                 return process(self.cfg.llm, self.api_key(), text), label
@@ -501,7 +517,8 @@ class App:
     def set_llm(self) -> None:
         llm = self.cfg.llm
         actions = {"1": self.toggle_llm, "2": self.set_provider, "3": self.set_base_url,
-                   "4": self.set_api_key, "5": self.set_model, "6": self.test_llm, "7": self.custom_prompts}
+                   "4": self.set_api_key, "5": self.set_model, "6": self.test_llm, "7": self.custom_prompts,
+                   "8": self.set_idle_ttl, "9": self.toggle_unload_on_exit}
         while True:
             key_state = "set" if self.api_key() else "not set"
             t = Table.grid(padding=(0, 2))
@@ -513,14 +530,32 @@ class App:
                 ("5", "Model", llm.model or "-"),
                 ("6", "Test connection", ""),
                 ("7", "Custom prompts", f"{len(llm.custom_prompts)} defined"),
+                ("8", "Idle unload (TTL)", ttl_label(llm.idle_ttl_seconds)),
+                ("9", "Unload model when quitting", "yes" if llm.unload_on_exit else "no"),
                 ("b", "Back", ""),
             ]:
                 t.add_row(Text(k, style="cyan"), label, Text(val))
             self.console.print(Panel(t, title="LLM settings"))
+            self.console.print("[dim]TTL: LM Studio applies it only to models it loads on demand (JIT); "
+                               "models loaded manually or via lms keep no TTL. 0 = server default.[/]")
             c = self.choose("LLM", [*actions, "b"], "b")
             if c == "b":
                 return
             actions[c]()
+
+    def set_idle_ttl(self) -> None:
+        llm = self.cfg.llm
+        raw = self.ask("Idle TTL (seconds or e.g. 2m, 1h; 0 = server default)", default=ttl_label(llm.idle_ttl_seconds))
+        secs = parse_duration(raw)
+        if secs is None:
+            self.console.print("[red]Enter seconds (120) or a duration like 90s, 2m, 1h.[/]")
+            return
+        llm.idle_ttl_seconds = secs
+        self.save()
+
+    def toggle_unload_on_exit(self) -> None:
+        self.cfg.llm.unload_on_exit = not self.cfg.llm.unload_on_exit
+        self.save()
 
     def toggle_llm(self) -> None:
         llm = self.cfg.llm
@@ -593,6 +628,7 @@ class App:
 
     def test_llm(self) -> None:
         self.console.print(Text(f"Input: {SAMPLE_TEXT}"))
+        self.llm_used = True
         try:
             with self.console.status("Testing..."):
                 out = process(self.cfg.llm, self.api_key(), SAMPLE_TEXT)
@@ -621,6 +657,24 @@ class App:
                 if self.cfg.llm.preset == names[idx]:
                     self.cfg.llm.preset = "deramble"
                 self.save()
+
+
+def parse_duration(text: str) -> int | None:
+    """"120", "90s", "2m", "1h" -> seconds; None if unparseable or negative."""
+    t = text.strip().lower()
+    mult = {"s": 1, "m": 60, "h": 3600}.get(t[-1:], None)
+    num = t[:-1] if mult else t
+    try:
+        v = float(num)
+    except ValueError:
+        return None
+    return int(v * (mult or 1)) if v >= 0 else None
+
+
+def ttl_label(secs: int) -> str:
+    if secs <= 0:
+        return "server default"
+    return f"{secs // 60}m" if secs % 60 == 0 else f"{secs}s"
 
 
 def first_run(app: App) -> None:

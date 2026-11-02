@@ -152,3 +152,17 @@ def test_resolved_models_dir(tmp_path):
     assert cfgmod.resolved_models_dir(cfg).name == "models"
     cfg.whisper.models_dir = str(tmp_path / "m")
     assert cfgmod.resolved_models_dir(cfg) == tmp_path / "m"
+
+
+def test_llm_ttl_defaults_and_old_config_compat(cfg_file):
+    assert LLMConfig().idle_ttl_seconds == 120
+    assert LLMConfig().unload_on_exit is False
+    cfg_file.write_text('[llm]\nenabled = true\nmodel = "m"\n', encoding="utf-8")
+    loaded = load_config()
+    assert (loaded.llm.idle_ttl_seconds, loaded.llm.unload_on_exit) == (120, False)
+
+
+def test_llm_ttl_round_trip(cfg_file):
+    save_config(AppConfig(llm=LLMConfig(idle_ttl_seconds=0, unload_on_exit=True)))
+    loaded = load_config()
+    assert loaded.llm.idle_ttl_seconds == 0 and loaded.llm.unload_on_exit is True

@@ -39,6 +39,8 @@ class LLMConfig:
     mode: str = "cleanup"  # "cleanup" | "prompt"
     preset: str = "deramble"  # Prompt Mode preset key
     custom_prompts: dict[str, str] = field(default_factory=dict)  # name -> system prompt
+    idle_ttl_seconds: int = 120  # local servers: unload the model after this much idle time; 0 = server default
+    unload_on_exit: bool = False  # local servers: ask the server to unload the model when the app quits
 
 
 @dataclass

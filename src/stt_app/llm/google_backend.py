@@ -59,3 +59,6 @@ class GoogleBackend:
         except Exception as e:
             raise _wrap(e) from e
         return sorted(n for n in names if n)
+
+    def unload(self) -> None:
+        """Cloud models have nothing to unload."""

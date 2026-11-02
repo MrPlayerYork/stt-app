@@ -40,7 +40,7 @@ def make_backend(cfg: LLMConfig, api_key: str | None) -> LLMBackend:
 
         if not cfg.base_url:
             raise LLMError("No base URL set for the local server")
-        return OpenAICompatBackend(cfg.model, api_key, cfg.base_url)
+        return OpenAICompatBackend(cfg.model, api_key, cfg.base_url, cfg.idle_ttl_seconds)
     if p == "openai":
         from .openai_compat import OpenAICompatBackend
 

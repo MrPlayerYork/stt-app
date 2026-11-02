@@ -49,3 +49,6 @@ class AnthropicBackend:
             return sorted(m.id for m in self._client.models.list(limit=1000))
         except Exception as e:
             raise _wrap(e) from e
+
+    def unload(self) -> None:
+        """Cloud models have nothing to unload."""
