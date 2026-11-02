@@ -1,0 +1,15 @@
+# Shared-PC resource rules (see AGENTS.md): two jobs per agent by default. Only the `heavy`
+# board slot may override this, with CARGO_BUILD_JOBS=8 at most.
+[build]
+jobs = 2
+rustc-wrapper = "sccache"
+
+[env]
+# The system pkg-config does not search brew; Vulkan, ALSA, etc. come from brew.
+PKG_CONFIG_PATH = "/home/linuxbrew/.linuxbrew/lib/pkgconfig"
+# Shared compile cache on the same disk as the worktrees.
+SCCACHE_DIR = "<data-drive>/.sccache"
+# whisper.cpp (cmake) builds with ninja and caches its C/C++ through sccache too.
+CMAKE_GENERATOR = "Ninja"
+CMAKE_C_COMPILER_LAUNCHER = "sccache"
+CMAKE_CXX_COMPILER_LAUNCHER = "sccache"

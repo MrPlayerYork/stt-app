@@ -1,0 +1,17 @@
+[package]
+name = "stt-clipboard"
+description = "Clipboard copy via wl-copy, xclip or xsel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+stt-core.workspace = true
+
+[dev-dependencies]
+stt-core = { workspace = true, features = ["fakes"] }
+
+[lints]
+workspace = true

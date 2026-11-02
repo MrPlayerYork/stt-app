@@ -1,0 +1,26 @@
+[package]
+name = "stt"
+description = "Push-to-record speech-to-text terminal app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "stt"
+path = "src/main.rs"
+
+[dependencies]
+stt-core.workspace = true
+stt-audio.workspace = true
+stt-whisper.workspace = true
+stt-download.workspace = true
+stt-llm.workspace = true
+stt-clipboard.workspace = true
+stt-calibrate.workspace = true
+stt-tui.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

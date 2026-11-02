@@ -1,0 +1,28 @@
+history_size = 20
+
+[audio]
+device_name = ""
+samplerate = 16000
+
+[whisper]
+model = "large-v3-turbo"
+device = "auto"
+compute_type = "auto"
+language = "en"
+models_dir = ""
+download_connections = 8
+
+[llm]
+enabled = false
+provider = "openai_compat"
+model = ""
+base_url = ""
+api_key_env = ""
+mode = "cleanup"
+preset = "deramble"
+idle_ttl_seconds = 120
+unload_on_exit = false
+reasoning = "default"
+word_choice = false
+
+[llm.custom_prompts]
