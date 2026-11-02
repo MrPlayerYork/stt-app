@@ -105,7 +105,8 @@ Proven in P1-b (`scratch/whisper-spike/RESULTS.md`). Without these fixes the bui
 - The first GPU run after a fresh build compiles shaders (about 16 s once); time warm runs, not that one.
 
 ### Verifying and reporting
-- Done = your crate's tests pass (`cargo test -p <crate>`), `cargo clippy -p <crate>` is clean, plus any real-world
+- Done = your crate's tests pass (`cargo test -p <crate>`), `cargo clippy -p <crate> --all-targets` is clean, `cargo fmt -p <crate>`
+  has been run (only on your crate), plus any real-world
   check your prompt asks for (in the right slot).
 - Commit on your branch: short message, blank line, `Co-Authored-By: <your model> <noreply@anthropic.com>`.
 - Final report, **under 12 lines**: branch, commit, what's done, how it was verified, contract changes, open issues.
