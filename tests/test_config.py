@@ -166,3 +166,21 @@ def test_llm_ttl_round_trip(cfg_file):
     save_config(AppConfig(llm=LLMConfig(idle_ttl_seconds=0, unload_on_exit=True)))
     loaded = load_config()
     assert loaded.llm.idle_ttl_seconds == 0 and loaded.llm.unload_on_exit is True
+
+
+def test_reasoning_and_word_choice_round_trip(cfg_file):
+    save_config(AppConfig(llm=LLMConfig(reasoning="high", word_choice=True)))
+    loaded = load_config()
+    assert loaded.llm.reasoning == "high" and loaded.llm.word_choice is True
+
+
+def test_reasoning_and_word_choice_defaults_for_old_config(cfg_file):
+    cfg_file.write_text('[llm]\nenabled = true\nmode = "prompt"\n', encoding="utf-8")
+    loaded = load_config()
+    assert (loaded.llm.reasoning, loaded.llm.word_choice) == ("default", False)
+
+
+@pytest.mark.parametrize("value", ["extreme", "HIGH", "", "none"])
+def test_invalid_reasoning_value_falls_back_to_default(cfg_file, value):
+    cfg_file.write_text(f'[llm]\nreasoning = "{value}"\n', encoding="utf-8")
+    assert load_config().llm.reasoning == "default"

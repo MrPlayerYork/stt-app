@@ -4,7 +4,13 @@ from __future__ import annotations
 import pytest
 
 from stt_app.config import LLMConfig
-from stt_app.llm.prompts import CLEANUP_PROMPT, PRESETS, all_presets, system_prompt_for
+from stt_app.llm.prompts import (
+    CLEANUP_PROMPT,
+    PRESETS,
+    WORD_CHOICE_ADDENDUM,
+    all_presets,
+    system_prompt_for,
+)
 
 
 def test_cleanup_mode_uses_cleanup_prompt():
@@ -47,3 +53,25 @@ def test_all_presets_lists_builtins_and_customs():
 
 def test_all_presets_without_customs_is_builtins_only():
     assert set(all_presets(LLMConfig())) == set(PRESETS)
+
+
+def test_word_choice_addendum_added_to_builtin_preset():
+    cfg = LLMConfig(mode="prompt", preset="concise", word_choice=True)
+    assert system_prompt_for(cfg) == PRESETS["concise"][1] + WORD_CHOICE_ADDENDUM
+
+
+def test_word_choice_addendum_added_to_custom_prompt():
+    cfg = LLMConfig(mode="prompt", preset="mine", custom_prompts={"mine": "Be a pirate."}, word_choice=True)
+    assert system_prompt_for(cfg) == "Be a pirate." + WORD_CHOICE_ADDENDUM
+
+
+def test_word_choice_addendum_absent_when_disabled():
+    cfg = LLMConfig(mode="prompt", preset="deramble", word_choice=False)
+    assert WORD_CHOICE_ADDENDUM not in system_prompt_for(cfg)
+    assert system_prompt_for(cfg) == PRESETS["deramble"][1]
+
+
+def test_word_choice_addendum_absent_in_cleanup_mode():
+    cfg = LLMConfig(mode="cleanup", word_choice=True)
+    assert system_prompt_for(cfg) == CLEANUP_PROMPT
+    assert WORD_CHOICE_ADDENDUM not in system_prompt_for(cfg)
