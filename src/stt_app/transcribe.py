@@ -5,8 +5,12 @@ import ctypes
 import glob
 import importlib.util
 import os
+import threading
+from pathlib import Path
 
 import numpy as np
+
+from .download import DownloadError, ProgressFn, ensure_model
 
 MODELS = ["large-v3", "large-v3-turbo", "distil-large-v3", "medium", "small"]
 
@@ -45,13 +49,20 @@ def _preload_cuda_libs() -> None:
 
 class Transcriber:
     def __init__(self, model: str = "large-v3-turbo", device: str = "auto",
-                 compute_type: str = "auto", language: str | None = "en"):
+                 compute_type: str = "auto", language: str | None = "en", *,
+                 models_dir: Path | None = None, token: str | None = None, connections: int = 8,
+                 on_progress: ProgressFn | None = None):
         self.model_name = model
         self.device = device
         self.compute_type = compute_type
         self.language = language
+        self.models_dir = models_dir  # None = only use models already in the HF cache or a local path
+        self.token = token
+        self.connections = connections
+        self.on_progress = on_progress
         self._model = None
         self._description: str | None = None
+        self._load_lock = threading.Lock()
 
     @property
     def description(self) -> str | None:
@@ -66,9 +77,29 @@ class Transcriber:
             return [("cuda", ct("cuda")), ("cpu", "int8")]
         return [(self.device, ct(self.device))]
 
-    def load(self) -> str:
+    def fetch(self, on_progress: ProgressFn | None = None) -> Path | str:
+        """Make sure the model files are local (downloading if needed); return the path to load."""
+        if self.models_dir is None:
+            return self.model_name
+
+        def report(done: int, total: int, name: str) -> None:
+            for cb in (self.on_progress, on_progress):
+                if cb:
+                    cb(done, total, name)
+
+        try:
+            return ensure_model(self.model_name, self.models_dir, self.token, self.connections, report)
+        except DownloadError as e:
+            raise TranscriberError(f"Could not download model '{self.model_name}': {e}") from e
+
+    def load(self, on_progress: ProgressFn | None = None) -> str:
+        with self._load_lock:  # the UI loader thread and calibration can both call this
+            return self._load(on_progress)
+
+    def _load(self, on_progress: ProgressFn | None) -> str:
         if self._model is not None and self._description:
             return self._description
+        path = self.fetch(on_progress)
         _preload_cuda_libs()
         try:
             from faster_whisper import WhisperModel
@@ -77,7 +108,7 @@ class Transcriber:
         errors: list[str] = []
         for dev, ctype in self._attempts():
             try:
-                model = WhisperModel(self.model_name, device=dev, compute_type=ctype)
+                model = WhisperModel(str(path), device=dev, compute_type=ctype)
                 # CUDA problems can surface only on first inference, so warm up here.
                 silence = np.zeros(TARGET_WARMUP, dtype=np.float32)
                 list(model.transcribe(silence, language=self.language, vad_filter=False)[0])

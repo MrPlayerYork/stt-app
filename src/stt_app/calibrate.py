@@ -171,9 +171,14 @@ def _evaluate(console: Console, transcriber: Transcriber, devices: list[InputDev
         else:
             todo.append((d, a, rms, snr, clip))
     if todo:
-        with console.status("Loading speech model (first use may download it)..."):
+        with console.status("Loading speech model (first use may download it)...") as status:
+            def show(done: int, total: int, name: str) -> None:
+                if done < total:
+                    status.update(f"Downloading {name} {done * 100 // max(total, 1)}%...")
+                else:
+                    status.update("Loading speech model...")
             try:
-                transcriber.load()
+                transcriber.load(show)
             except Exception as e:
                 for d, _, rms, snr, clip in todo:
                     results.append(MicScore(d, "", 0.0, rms, snr, clip, -1e9, f"model load failed: {e}"))

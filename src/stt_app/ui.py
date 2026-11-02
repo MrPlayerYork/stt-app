@@ -11,13 +11,14 @@ from dataclasses import dataclass
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
+from rich.progress import BarColumn, DownloadColumn, Progress, TextColumn, TransferSpeedColumn
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.text import Text
 
 from .audio import Recorder, find_device, list_input_devices
 from .clipboard import ClipboardError, copy
-from .config import AppConfig, WhisperConfig, get_api_key, load_config, save_config, set_api_key
+from .config import AppConfig, get_api_key, load_config, resolved_models_dir, save_config, set_api_key
 from .llm import (
     DEFAULT_MODELS,
     LOCAL_PRESETS,
@@ -27,6 +28,7 @@ from .llm import (
     make_backend,
     process,
 )
+from .download import DownloadError, ensure_model
 from .transcribe import MODELS, Transcriber, TranscriberError
 
 MODE_ORDER = ["raw", "cleanup", "prompt"]
@@ -43,9 +45,15 @@ class HistoryItem:
 class ModelLoader:
     """Loads a Transcriber in a background thread and tracks its status."""
 
-    def __init__(self, whisper: WhisperConfig):
-        self.transcriber = Transcriber(whisper.model, whisper.device, whisper.compute_type, whisper.language)
+    def __init__(self, cfg: AppConfig):
+        w = cfg.whisper
+        self.transcriber = Transcriber(
+            w.model, w.device, w.compute_type, w.language, models_dir=resolved_models_dir(cfg),
+            token=get_api_key("huggingface", "HF_TOKEN"), connections=w.download_connections,
+            on_progress=self._on_progress)
         self.error: str | None = None
+        self._sample: tuple[float, int] | None = None  # (time, bytes) of the previous callback
+        self._dl: tuple[str, int, int, float, float] | None = None  # name, done, total, speed, time
         self.done = threading.Event()
         threading.Thread(target=self._run, daemon=True).start()
 
@@ -59,9 +67,21 @@ class ModelLoader:
         finally:
             self.done.set()
 
+    def _on_progress(self, done: int, total: int, name: str) -> None:
+        now = time.monotonic()
+        prev = self._sample
+        speed = (done - prev[1]) / max(now - prev[0], 1e-3) if prev and done >= prev[1] else 0.0
+        self._sample = (now, done)
+        self._dl = (name, done, total, speed, now)
+
     @property
     def status(self) -> Text:
         if not self.done.is_set():
+            dl = self._dl
+            if dl and dl[1] < dl[2] and time.monotonic() - dl[4] < 5:
+                name, done, total, speed, _ = dl
+                return Text(f"downloading {name} {done * 100 // max(total, 1)}% ({speed / 1e6:.1f} MB/s)",
+                            style="yellow")
             return Text("loading...", style="yellow")
         if self.error:
             return Text(self.error[:160], style="red")
@@ -87,7 +107,7 @@ class App:
     def start_loading(self) -> None:
         if self.loader is not None:
             self.loader.transcriber.unload()
-        self.loader = ModelLoader(self.cfg.whisper)
+        self.loader = ModelLoader(self.cfg)
 
     def mode_key(self) -> str:
         llm = self.cfg.llm
@@ -342,6 +362,70 @@ class App:
         return name
 
     def set_whisper(self) -> None:
+        actions = {"1": self.set_model_options, "2": self.set_models_dir, "3": self.set_connections,
+                   "4": self.set_hf_token, "5": self.download_now}
+        while True:
+            w = self.cfg.whisper
+            t = Table.grid(padding=(0, 2))
+            for k, label, val in [
+                ("1", "Model / device / language", f"{w.model}, {w.device}, {w.language or 'auto'}"),
+                ("2", "Models folder", str(resolved_models_dir(self.cfg)) + ("" if w.models_dir else " (default)")),
+                ("3", "Download connections", str(w.download_connections)),
+                ("4", "Hugging Face token", "set" if get_api_key("huggingface", "HF_TOKEN") else "not set"),
+                ("5", "Download/verify current model now", ""),
+                ("b", "Back", ""),
+            ]:
+                t.add_row(Text(k, style="cyan"), label, Text(val))
+            self.console.print(Panel(t, title="Whisper settings"))
+            c = self.ask("Whisper", choices=[*actions, "b"], default="b", show_choices=False)
+            if c == "b":
+                return
+            actions[c]()
+
+    def set_models_dir(self) -> None:
+        w = self.cfg.whisper
+        new = self.ask("Models folder (blank = default, '-' keeps)", default="-", show_default=False).strip()
+        if new != "-" and new != w.models_dir:
+            w.models_dir = new
+            self.save()
+            self.start_loading()
+            self.console.print("[dim]Reloading the model in the background.[/]")
+
+    def set_connections(self) -> None:
+        raw = self.ask("Connections per file (1-32, Enter keeps)", default="", show_default=False).strip()
+        if raw.isdigit() and 1 <= int(raw) <= 32:
+            self.cfg.whisper.download_connections = int(raw)
+            self.save()
+        elif raw:
+            self.console.print("[red]Enter a number from 1 to 32.[/]")
+
+    def set_hf_token(self) -> None:
+        key = self.ask("Hugging Face token (Enter to keep)", password=True, default="", show_default=False)
+        if key.strip():
+            try:
+                set_api_key("huggingface", key.strip())
+                self.console.print("[green]Token stored.[/]")
+            except Exception as e:  # keyring backends raise many types
+                self.console.print(f"[red]Could not store the token in the keyring: {e}[/]")
+
+    def download_now(self) -> None:
+        w = self.cfg.whisper
+        bar = Progress(TextColumn("{task.description}"), BarColumn(), DownloadColumn(), TransferSpeedColumn(),
+                       console=self.console)
+        task = bar.add_task("checking...", total=None)
+
+        def show(done: int, total: int, name: str) -> None:
+            bar.update(task, description=name, completed=done, total=total)
+
+        try:
+            with bar:
+                path = ensure_model(w.model, resolved_models_dir(self.cfg), get_api_key("huggingface", "HF_TOKEN"),
+                                    w.download_connections, show)
+            self.console.print(f"[green]Model ready:[/] {path}")
+        except DownloadError as e:
+            self.console.print(f"[red]Download failed: {e}[/] [dim](run it again to resume)[/]")
+
+    def set_model_options(self) -> None:
         w = self.cfg.whisper
         before = (w.model, w.device, w.language)
         idx = self.pick("Model", MODELS, w.model)

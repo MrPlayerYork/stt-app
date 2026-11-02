@@ -138,3 +138,17 @@ def test_api_key_never_written_to_toml(cfg_file, monkeypatch):
     assert secret not in text
     assert "api_key =" not in text
     assert "STT_TEST_KEY" in text  # only the env var name is persisted
+
+
+def test_new_whisper_fields_default_for_old_config(cfg_file):
+    cfg_file.write_text('[whisper]\nmodel = "small"\n')
+    cfg = load_config()
+    assert cfg.whisper.model == "small"
+    assert cfg.whisper.models_dir == "" and cfg.whisper.download_connections == 8
+
+
+def test_resolved_models_dir(tmp_path):
+    cfg = AppConfig()
+    assert cfgmod.resolved_models_dir(cfg).name == "models"
+    cfg.whisper.models_dir = str(tmp_path / "m")
+    assert cfgmod.resolved_models_dir(cfg) == tmp_path / "m"

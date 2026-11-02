@@ -25,6 +25,8 @@ class WhisperConfig:
     device: str = "auto"  # "auto" | "cuda" | "cpu"
     compute_type: str = "auto"
     language: str | None = "en"  # None = auto-detect
+    models_dir: str = ""  # "" = <user data dir>/models
+    download_connections: int = 8
 
 
 @dataclass
@@ -52,6 +54,11 @@ def config_path() -> Path:
     if override:
         return Path(override)
     return platformdirs.user_config_path(SERVICE) / "config.toml"
+
+
+def resolved_models_dir(cfg: AppConfig) -> Path:
+    custom = cfg.whisper.models_dir.strip()
+    return Path(custom).expanduser() if custom else platformdirs.user_data_path(SERVICE) / "models"
 
 
 def _section(cls, data: dict, nullable: tuple[str, ...] = ()):
