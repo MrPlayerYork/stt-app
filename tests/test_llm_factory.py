@@ -66,9 +66,9 @@ class _FakeBackend:
         self.output = output
         self.calls: list[tuple[str, str]] = []
 
-    def complete(self, system_prompt: str, text: str) -> str:
+    def complete(self, system_prompt: str, text: str):
         self.calls.append((system_prompt, text))
-        return self.output
+        return llm.LLMResult(self.output)
 
 
 def test_process_returns_stripped_output(monkeypatch):
@@ -82,6 +82,6 @@ def test_process_returns_stripped_output(monkeypatch):
     monkeypatch.setattr(llm, "make_backend", fake_make)
     cfg = LLMConfig(provider="openai", model="m")
     out = process(cfg, "k", "um hello there")
-    assert out == "Hello there."
+    assert out.text == "Hello there."
     assert seen["args"] == (cfg, "k")
     assert fake.calls == [(CLEANUP_PROMPT, "um hello there")]
