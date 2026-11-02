@@ -4,14 +4,18 @@ Things to come back to. Each one is an open question or a known gap, not a block
 once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch/whisper-spike/RESULTS.md`.
 
 ## From the Whisper gate test (P1-b, 2026-11-01, verdict GO)
-- [ ] **Cold start on first GPU run: 16.6 s (P2-8 measured load+warm-up 20.5 s in a fresh process; the next fresh process took 0.64 s, so the shader cache persists across processes; reboot/driver update untested).** Probably a one-time Vulkan shader compile; warm runs took 0.22 s.
-  Untested: after a reboot, after a driver update, or with the shader cache cleared. The app needs a warm-up
-  transcription at load (the Python app already does a 0.5 s silence warm-up) and a visible "warming up" state.
-  Worth measuring once P2-8 exists.
-- [ ] **Decoding settings weren't identical (P2-8: stt-whisper now uses beam 5 + Silero VAD; warm gate.wav time q5_0 GPU: beam 5 = 0.34 s, greedy = 0.23 s, vs faster-whisper 0.245 s).** Rust used greedy decoding with no VAD; the Python app uses beam 5 with
-  `vad_filter=True`. Re-compare speed once `stt-whisper` uses the same settings (beam search will cost some time).
-- [ ] **CPU fallback is about 1x real time** (P2-8, beam 5, machine loaded: 4 threads 23.7 s, 8 threads 13.7-14.0 s, 12 threads 13.6 s for 20 s audio; default is now 8 threads, about 0.7x real time) (21.8 s for 20 s of audio, default 4 threads). Thread count not tuned;
-  the 3700X has 16 threads.
+- [ ] **Cold start: about 20 s once, then 0.6 s.** The first GPU load+warm-up after a fresh build took 16.6 s (P1-b) /
+  20.5 s (P2-8): a one-time Vulkan shader compile. The next fresh process took 0.64 s, so the shader cache
+  persists across runs. Untested: after a reboot or a driver update. stt-whisper already warms up at load; Phase 3
+  still needs a visible "warming up…" state for the slow case.
+- [ ] **Speed with matched settings (P2-8):** stt-whisper now uses beam 5 + Silero VAD like the Python app. Warm
+  transcribe of the 20 s clip, q5_0 GPU: **beam 5 = 0.34 s** (greedy 0.23 s) vs faster-whisper 0.245 s. So about
+  1.4x slower on transcription with equal settings (well inside the gate's 2x), but loads about 4x faster. Decide
+  whether to keep beam 5 or offer greedy as a "fast" option.
+- [ ] **CPU fallback:** beam 5, 20 s clip: 4 threads 23.7 s, 8 threads about 13.8 s, 12 threads 13.6 s (machine was busy
+  with other agents, so noisy). Default is now 8 threads, about 0.7x real time. Fine as a fallback; slow as a main path.
+- [ ] **VAD model:** Silero VAD (`ggml-silero-v5.1.2.bin`, 885 KB from `ggml-org/whisper-vad`) is fetched next to
+  the Whisper model; if that fails, decoding runs without VAD. Check that the app shows it in download progress.
 - [ ] **Small sample:** one 20 s clip, one speaker. Try a longer clip, names/numbers/jargon, and maybe a noisy one
   before calling the rewrite done.
 - [x] **Model default:** q5_0 (same text as f16, about half the VRAM: 1.1 GB vs 2.1 GB). See the quantization item below.
