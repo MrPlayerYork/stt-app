@@ -68,7 +68,10 @@ Model tiers: **H** = haiku, **S** = sonnet, **O** = opus. "Heavy" = needs the `h
 2. Vulkan build deps are **already installed via brew** (`vulkan-headers`, `vulkan-loader`, `shaderc`/`glslc`,
    `glslang`, `spirv-*`, plus `cmake`, `clang`). The system `/usr/bin/pkg-config` doesn't search brew, so builds need
    `PKG_CONFIG_PATH=/home/linuxbrew/.linuxbrew/lib/pkgconfig` (put it in `rust/.cargo/config.toml` `[env]`).
-   **User approval still needed** for the optional `brew install sccache` (shared compile cache across worktrees) and `ninja` (faster cmake).
+   `sccache` 0.19.0 and `ninja` 1.13.2 are installed via brew (done 2026-11-01). P1-a wires them into
+   `rust/.cargo/config.toml`: `[build] rustc-wrapper = "sccache"`, and `[env]` `SCCACHE_DIR` on <data-drive>
+   (e.g. `<data-drive>/.sccache`, same disk as the worktrees), `CMAKE_GENERATOR = "Ninja"`,
+   `CMAKE_C_COMPILER_LAUNCHER`/`CMAKE_CXX_COMPILER_LAUNCHER = "sccache"` so whisper.cpp's C++ is cached too.
 3. Verify: `PKG_CONFIG_PATH=... pkg-config --modversion vulkan` (1.4.363), `glslc --version`, `cargo --version` (rustc 1.97.1).
 
 ### Phase 1 — Skeleton + Whisper gate (2 agents, parallel)
