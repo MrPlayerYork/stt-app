@@ -34,11 +34,19 @@ fn fake_transcriber() {
     let cb: LoadProgressFn = Arc::new(move |e: &LoadEvent| sink.lock().unwrap().push(e.clone()));
     let info = t.load(Some(cb)).unwrap();
     assert_eq!(info.description(), "large-v3-turbo on gpu (Fake)");
-    assert!(matches!(events.lock().unwrap().last(), Some(LoadEvent::Ready(_))));
+    assert!(matches!(
+        events.lock().unwrap().last(),
+        Some(LoadEvent::Ready(_))
+    ));
 
     // Loading in another thread returns the same info without reloading.
     let t2 = t.clone();
-    assert_eq!(std::thread::spawn(move || t2.load(None).unwrap()).join().unwrap(), info);
+    assert_eq!(
+        std::thread::spawn(move || t2.load(None).unwrap())
+            .join()
+            .unwrap(),
+        info
+    );
     assert_eq!(t.transcribe(&[0.1; 16]).unwrap(), "hello world");
     t.unload();
     assert!(t.info().is_none());
@@ -52,7 +60,10 @@ fn fake_transcriber_fallback_and_failure() {
     assert!(info.description().contains("GPU failed: out of VRAM"));
 
     let bad = FakeTranscriber::new("x").failing_load("boom");
-    assert!(matches!(bad.transcribe(&[0.0; 4]), Err(TranscribeError::Load { .. })));
+    assert!(matches!(
+        bad.transcribe(&[0.0; 4]),
+        Err(TranscribeError::Load { .. })
+    ));
 
     let per_clip = FakeTranscriber::with_fn(|a| Ok(format!("{} samples", a.len())));
     assert_eq!(per_clip.transcribe(&[0.0; 3]).unwrap(), "3 samples");
@@ -70,7 +81,9 @@ fn fake_transcriber_factory() {
 
 #[test]
 fn fake_llm_and_factory() {
-    let llm = FakeLlm::new("Clean text.").models(&["a", "b"]).server_kind(ServerKind::LmStudio);
+    let llm = FakeLlm::new("Clean text.")
+        .models(&["a", "b"])
+        .server_kind(ServerKind::LmStudio);
     let factory = FakeLlmFactory::new(llm.clone());
     let f: &dyn LlmFactory = &factory;
 
@@ -90,7 +103,10 @@ fn fake_llm_and_factory() {
     cfg.provider = Provider::Anthropic;
     cfg.api_key_env = "ANTHROPIC_API_KEY".into();
     let err = f.create(&cfg, None).err().unwrap();
-    assert_eq!(err.to_string(), "no API key set for Anthropic (env var ANTHROPIC_API_KEY)");
+    assert_eq!(
+        err.to_string(),
+        "no API key set for Anthropic (env var ANTHROPIC_API_KEY)"
+    );
     assert!(f.create(&cfg, Some("sk-x")).is_ok());
 
     let failing = FakeLlm::new("x").failing("refused");
@@ -117,11 +133,17 @@ fn fake_audio_source() {
     assert!(rec.is_recording());
     assert_eq!(rec.level(), 0.25);
     assert_eq!(rec.stop().unwrap().len(), 10);
-    assert!(rec.stop().unwrap().is_empty(), "stop when idle returns nothing");
+    assert!(
+        rec.stop().unwrap().is_empty(),
+        "stop when idle returns nothing"
+    );
 
     let mut multi = src.multi_recorder(&devs);
     let failed = multi.start();
-    assert_eq!(failed.keys().collect::<Vec<_>>(), [&DeviceId("Broken".into())]);
+    assert_eq!(
+        failed.keys().collect::<Vec<_>>(),
+        [&DeviceId("Broken".into())]
+    );
     assert_eq!(multi.levels().len(), 2);
     let clips = multi.stop();
     assert_eq!(clips.len(), 2);
@@ -144,10 +166,22 @@ fn secrets_keyring_first_then_env() {
     let store = MemorySecretStore::with(&[("anthropic", "from-keyring")]);
     // SAFETY: tests in this binary touch only this uniquely named variable.
     unsafe { std::env::set_var("STT_CORE_TEST_KEY", "from-env") };
-    assert_eq!(secrets::get_api_key(&store, "anthropic", "STT_CORE_TEST_KEY").as_deref(), Some("from-keyring"));
-    assert_eq!(secrets::get_api_key(&store, "google", "STT_CORE_TEST_KEY").as_deref(), Some("from-env"));
+    assert_eq!(
+        secrets::get_api_key(&store, "anthropic", "STT_CORE_TEST_KEY").as_deref(),
+        Some("from-keyring")
+    );
+    assert_eq!(
+        secrets::get_api_key(&store, "google", "STT_CORE_TEST_KEY").as_deref(),
+        Some("from-env")
+    );
     assert_eq!(secrets::get_api_key(&store, "google", ""), None);
-    assert_eq!(secrets::get_api_key(&store, HF_TOKEN_USER, "STT_CORE_TEST_UNSET"), None);
+    assert_eq!(
+        secrets::get_api_key(&store, HF_TOKEN_USER, "STT_CORE_TEST_UNSET"),
+        None
+    );
     secrets::set_api_key(&store, "google", "k").unwrap();
-    assert_eq!(secrets::get_api_key(&store, "google", "").as_deref(), Some("k"));
+    assert_eq!(
+        secrets::get_api_key(&store, "google", "").as_deref(),
+        Some("k")
+    );
 }

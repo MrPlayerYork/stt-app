@@ -6,7 +6,7 @@
 //! - Every section and key is optional; missing ones take the defaults below (`#[serde(default)]`).
 //! - Unknown keys and sections are ignored (and, like Python, dropped on the next save).
 //! - TOML has no null: `audio.device_name` and `whisper.language` use `""` for "none" both ways.
-//! - Enum-valued strings (`whisper.device`, `llm.provider`, `llm.mode`, `llm.reasoning`) accept unknown
+//! - Enum-valued strings (`whisper.device`, `whisper.quantization`, `llm.provider`, `llm.mode`, `llm.reasoning`) accept unknown
 //!   values and fall back to the default instead of failing the whole file.
 //! - New Rust-only keys must be additive: add the field with `#[serde(default)]` and a default that keeps
 //!   the Python behaviour.
@@ -105,6 +105,22 @@ string_enum! {
 }
 
 string_enum! {
+    /// `whisper.quantization` (Rust-only, additive): which ggml weight variant of the model to load.
+    /// The Python app ignores this key. Default `q5_0`: in the P1-b gate it gave the same text as f16 with
+    /// about half the VRAM. Not every model has every variant on Hugging Face; stt-whisper picks the
+    /// nearest available one (and says which in [`crate::LoadInfo`]).
+    pub enum WhisperQuant {
+        /// Full-precision f16 weights (largest, most VRAM).
+        F16 = "f16";
+        /// 8-bit quantized.
+        Q8_0 = "q8_0";
+        /// 5-bit quantized. Default.
+        Q5_0 = "q5_0";
+    }
+    default = Q5_0;
+}
+
+string_enum! {
     /// `llm.provider`. An unknown provider string loads as the default (`openai_compat`); the Python app
     /// kept the string and failed when building the backend.
     pub enum Provider {
@@ -155,7 +171,9 @@ impl Provider {
     pub fn label(self) -> &'static str {
         match self {
             Self::OpenAi => "OpenAI",
-            Self::OpenAiCompat => "Local / OpenAI-compatible (Ollama, LM Studio, vLLM, llama-server)",
+            Self::OpenAiCompat => {
+                "Local / OpenAI-compatible (Ollama, LM Studio, vLLM, llama-server)"
+            }
             Self::Anthropic => "Anthropic",
             Self::Google => "Google Gemini",
         }
@@ -248,7 +266,10 @@ pub struct AudioConfig {
 
 impl Default for AudioConfig {
     fn default() -> Self {
-        Self { device_name: None, samplerate: 16_000 }
+        Self {
+            device_name: None,
+            samplerate: 16_000,
+        }
     }
 }
 
@@ -270,6 +291,8 @@ pub struct WhisperConfig {
     pub models_dir: String,
     /// Parallel connections per downloaded file (default 8; the UI allows 1..=32).
     pub download_connections: u32,
+    /// ggml weight variant (Rust-only key, default q5_0). See [`WhisperQuant`].
+    pub quantization: WhisperQuant,
 }
 
 impl Default for WhisperConfig {
@@ -281,6 +304,7 @@ impl Default for WhisperConfig {
             language: Some("en".into()),
             models_dir: String::new(),
             download_connections: 8,
+            quantization: WhisperQuant::Q5_0,
         }
     }
 }
@@ -357,12 +381,18 @@ pub fn config_path() -> Result<PathBuf, ConfigError> {
     if let Some(p) = std::env::var_os(CONFIG_ENV).filter(|p| !p.is_empty()) {
         return Ok(PathBuf::from(p));
     }
-    Ok(dirs::config_dir().ok_or(ConfigError::NoConfigDir)?.join(APP_NAME).join("config.toml"))
+    Ok(dirs::config_dir()
+        .ok_or(ConfigError::NoConfigDir)?
+        .join(APP_NAME)
+        .join("config.toml"))
 }
 
 /// Default models directory: `<XDG data dir>/stt-app/models` (normally `~/.local/share/stt-app/models`).
 pub fn default_models_dir() -> Result<PathBuf, ConfigError> {
-    Ok(dirs::data_dir().ok_or(ConfigError::NoConfigDir)?.join(APP_NAME).join("models"))
+    Ok(dirs::data_dir()
+        .ok_or(ConfigError::NoConfigDir)?
+        .join(APP_NAME)
+        .join("models"))
 }
 
 /// The models directory to use: `whisper.models_dir` (trimmed, `~` expanded) or [`default_models_dir`].
@@ -436,7 +466,10 @@ mod tests {
     fn custom_models_dir_is_trimmed() {
         let mut cfg = AppConfig::default();
         cfg.whisper.models_dir = "  /data/models ".into();
-        assert_eq!(resolved_models_dir(&cfg).unwrap(), PathBuf::from("/data/models"));
+        assert_eq!(
+            resolved_models_dir(&cfg).unwrap(),
+            PathBuf::from("/data/models")
+        );
     }
 
     #[test]

@@ -99,7 +99,11 @@ impl Transcriber for FakeTranscriber {
 
     fn fetch(&self, on_progress: Option<DownloadProgressFn>) -> Result<PathBuf, TranscribeError> {
         if let Some(cb) = on_progress {
-            cb(&DownloadProgress { file: format!("ggml-{}.bin", self.model), done: 100, total: 100 });
+            cb(&DownloadProgress {
+                file: format!("ggml-{}.bin", self.model),
+                done: 100,
+                total: 100,
+            });
         }
         Ok(self.path())
     }
@@ -115,7 +119,10 @@ impl Transcriber for FakeTranscriber {
             }
         };
         if let Some(message) = &self.load_error {
-            return Err(TranscribeError::Load { model: self.model.clone(), message: message.clone() });
+            return Err(TranscribeError::Load {
+                model: self.model.clone(),
+                message: message.clone(),
+            });
         }
         let path = self.path();
         emit(LoadEvent::Download(DownloadProgress {
@@ -123,12 +130,21 @@ impl Transcriber for FakeTranscriber {
             done: 100,
             total: 100,
         }));
-        let gpu = ComputeDevice::Gpu { backend: "Fake".into(), name: None };
-        emit(LoadEvent::Loading { device: gpu.clone() });
+        let gpu = ComputeDevice::Gpu {
+            backend: "Fake".into(),
+            name: None,
+        };
+        emit(LoadEvent::Loading {
+            device: gpu.clone(),
+        });
         let device = match &self.gpu_failure {
             Some(reason) => {
-                emit(LoadEvent::Fallback { reason: reason.clone() });
-                emit(LoadEvent::Loading { device: ComputeDevice::Cpu });
+                emit(LoadEvent::Fallback {
+                    reason: reason.clone(),
+                });
+                emit(LoadEvent::Loading {
+                    device: ComputeDevice::Cpu,
+                });
                 ComputeDevice::Cpu
             }
             None => gpu,
@@ -156,7 +172,9 @@ impl Transcriber for FakeTranscriber {
         }
         self.load(None)?;
         lock(&self.calls).push(audio.len());
-        (self.responder)(audio).map(|t| t.trim().to_string()).map_err(TranscribeError::Transcribe)
+        (self.responder)(audio)
+            .map(|t| t.trim().to_string())
+            .map_err(TranscribeError::Transcribe)
     }
 
     fn unload(&self) {
@@ -174,7 +192,10 @@ pub struct FakeTranscriberFactory {
 impl FakeTranscriberFactory {
     /// Every created transcriber answers `text`.
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into(), created: Mutex::new(Vec::new()) }
+        Self {
+            text: text.into(),
+            created: Mutex::new(Vec::new()),
+        }
     }
 
     /// Every transcriber created so far, oldest first.
@@ -217,7 +238,11 @@ pub struct FakeLlm {
 impl FakeLlm {
     /// Answers every completion with `text` (no reasoning, `reasoned: Some(false)`).
     pub fn new(text: impl Into<String>) -> Self {
-        Self::with_result(LlmResult { text: text.into(), reasoned: Some(false), ..LlmResult::default() })
+        Self::with_result(LlmResult {
+            text: text.into(),
+            reasoned: Some(false),
+            ..LlmResult::default()
+        })
     }
 
     /// Answers every completion with `result`.
@@ -257,7 +282,10 @@ impl FakeLlm {
 
     fn fail(&self) -> Result<(), LlmError> {
         match &lock(&self.state).failure {
-            Some(m) => Err(LlmError::Connection { url: "fake".into(), message: m.clone() }),
+            Some(m) => Err(LlmError::Connection {
+                url: "fake".into(),
+                message: m.clone(),
+            }),
             None => Ok(()),
         }
     }
@@ -265,7 +293,9 @@ impl FakeLlm {
 
 impl LlmBackend for FakeLlm {
     fn complete(&self, system_prompt: &str, text: &str) -> Result<LlmResult, LlmError> {
-        lock(&self.state).calls.push((system_prompt.to_string(), text.to_string()));
+        lock(&self.state)
+            .calls
+            .push((system_prompt.to_string(), text.to_string()));
         self.fail()?;
         Ok(lock(&self.state).result.clone())
     }
@@ -297,7 +327,10 @@ pub struct FakeLlmFactory {
 impl FakeLlmFactory {
     /// A factory that returns clones of `llm`.
     pub fn new(llm: FakeLlm) -> Self {
-        Self { llm, requests: Arc::default() }
+        Self {
+            llm,
+            requests: Arc::default(),
+        }
     }
 
     /// Every config passed to `create`, in order.
@@ -307,11 +340,22 @@ impl FakeLlmFactory {
 }
 
 impl LlmFactory for FakeLlmFactory {
-    fn create(&self, cfg: &LlmConfig, api_key: Option<&str>) -> Result<Box<dyn LlmBackend>, LlmError> {
+    fn create(
+        &self,
+        cfg: &LlmConfig,
+        api_key: Option<&str>,
+    ) -> Result<Box<dyn LlmBackend>, LlmError> {
         lock(&self.requests).push(cfg.clone());
         if cfg.provider.needs_api_key() && api_key.is_none_or(str::is_empty) {
-            let env = if cfg.api_key_env.is_empty() { "?" } else { cfg.api_key_env.as_str() };
-            return Err(LlmError::NoApiKey { provider: cfg.provider.label().into(), env: env.into() });
+            let env = if cfg.api_key_env.is_empty() {
+                "?"
+            } else {
+                cfg.api_key_env.as_str()
+            };
+            return Err(LlmError::NoApiKey {
+                provider: cfg.provider.label().into(),
+                env: env.into(),
+            });
         }
         if !cfg.provider.needs_api_key() && cfg.base_url.is_empty() {
             return Err(LlmError::NoBaseUrl);
@@ -363,7 +407,9 @@ impl FakeAudioSource {
 
     /// Make opening `name` fail (single and multi recorders).
     pub fn failing_open(self, name: &str) -> Self {
-        lock(&self.state).fail_open.insert(DeviceId(name.to_string()));
+        lock(&self.state)
+            .fail_open
+            .insert(DeviceId(name.to_string()));
         self
     }
 
@@ -388,7 +434,11 @@ impl AudioSource for FakeAudioSource {
         if !s.clips.contains_key(&id) {
             return Err(AudioError::DeviceNotFound(id.0));
         }
-        Ok(Box::new(FakeRecorder { source: self.clone(), id, recording: false }))
+        Ok(Box::new(FakeRecorder {
+            source: self.clone(),
+            id,
+            recording: false,
+        }))
     }
 
     fn multi_recorder(&self, devices: &[InputDevice]) -> Box<dyn MultiRecorder> {
@@ -410,7 +460,10 @@ pub struct FakeRecorder {
 impl Recorder for FakeRecorder {
     fn start(&mut self) -> Result<(), AudioError> {
         if lock(&self.source.state).fail_open.contains(&self.id) {
-            return Err(AudioError::Open { device: self.id.0.clone(), message: "fake failure".into() });
+            return Err(AudioError::Open {
+                device: self.id.0.clone(),
+                message: "fake failure".into(),
+            });
         }
         self.recording = true;
         Ok(())
@@ -420,11 +473,19 @@ impl Recorder for FakeRecorder {
         if !std::mem::take(&mut self.recording) {
             return Ok(Vec::new());
         }
-        Ok(lock(&self.source.state).clips.get(&self.id).cloned().unwrap_or_default())
+        Ok(lock(&self.source.state)
+            .clips
+            .get(&self.id)
+            .cloned()
+            .unwrap_or_default())
     }
 
     fn level(&self) -> f32 {
-        if self.recording { lock(&self.source.state).level } else { 0.0 }
+        if self.recording {
+            lock(&self.source.state).level
+        } else {
+            0.0
+        }
     }
 
     fn is_recording(&self) -> bool {
@@ -485,7 +546,11 @@ pub struct FakeClipboard {
 
 impl Default for FakeClipboard {
     fn default() -> Self {
-        Self { copies: Arc::default(), method: ClipboardMethod::WlCopy, fail: false }
+        Self {
+            copies: Arc::default(),
+            method: ClipboardMethod::WlCopy,
+            fail: false,
+        }
     }
 }
 
@@ -497,7 +562,10 @@ impl FakeClipboard {
 
     /// Every copy fails with [`ClipboardError::NoTool`].
     pub fn failing() -> Self {
-        Self { fail: true, ..Self::default() }
+        Self {
+            fail: true,
+            ..Self::default()
+        }
     }
 
     /// Everything copied so far, oldest first.

@@ -12,7 +12,13 @@ use crate::secrets::SecretStore;
 
 /// Whisper model names offered in settings, in menu order (Python `transcribe.MODELS`). Stored in
 /// `whisper.model`.
-pub const WHISPER_MODELS: &[&str] = &["large-v3", "large-v3-turbo", "distil-large-v3", "medium", "small"];
+pub const WHISPER_MODELS: &[&str] = &[
+    "large-v3",
+    "large-v3-turbo",
+    "distil-large-v3",
+    "medium",
+    "small",
+];
 
 /// Where a model ended up running.
 #[derive(Debug, Clone, PartialEq, Eq)]

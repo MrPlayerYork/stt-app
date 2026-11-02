@@ -76,5 +76,9 @@ pub trait LlmBackend: Send + Sync {
 pub trait LlmFactory: Send + Sync {
     /// Build the backend for `cfg.provider`. Errors: [`LlmError::NoApiKey`] for a cloud provider without
     /// a key, [`LlmError::NoBaseUrl`] for `openai_compat` without `base_url`.
-    fn create(&self, cfg: &LlmConfig, api_key: Option<&str>) -> Result<Box<dyn LlmBackend>, LlmError>;
+    fn create(
+        &self,
+        cfg: &LlmConfig,
+        api_key: Option<&str>,
+    ) -> Result<Box<dyn LlmBackend>, LlmError>;
 }

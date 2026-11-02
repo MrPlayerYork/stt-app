@@ -30,7 +30,8 @@ pub mod fakes;
 pub use audio::{AudioSource, DeviceId, InputDevice, MultiRecorder, Recorder, find_device};
 pub use clipboard::{Clipboard, ClipboardMethod};
 pub use config::{
-    AppConfig, AudioConfig, LlmConfig, LlmMode, Provider, ReasoningLevel, WhisperConfig, WhisperDevice,
+    AppConfig, AudioConfig, LlmConfig, LlmMode, Provider, ReasoningLevel, WhisperConfig,
+    WhisperDevice, WhisperQuant,
 };
 pub use error::{
     AudioError, ClipboardError, ConfigError, DownloadError, LlmError, SecretError, TranscribeError,

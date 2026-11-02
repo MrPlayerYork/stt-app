@@ -38,7 +38,10 @@ fn defaults_match_python() {
 
 #[test]
 fn python_default_file_loads_as_default() {
-    assert_eq!(AppConfig::from_toml_str(PY_DEFAULTS).unwrap(), AppConfig::default());
+    assert_eq!(
+        AppConfig::from_toml_str(PY_DEFAULTS).unwrap(),
+        AppConfig::default()
+    );
 }
 
 #[test]
@@ -56,20 +59,34 @@ fn python_custom_file_loads() {
     assert_eq!(c.llm.idle_ttl_seconds, 0);
     assert_eq!(c.llm.reasoning, ReasoningLevel::High);
     assert!(c.llm.word_choice);
-    let prompts: Vec<_> = c.llm.custom_prompts.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let prompts: Vec<_> = c
+        .llm
+        .custom_prompts
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     assert_eq!(
         prompts,
-        [("zeta", "Be terse."), ("mine", "Translate to French.\nKeep \"quotes\".")],
+        [
+            ("zeta", "Be terse."),
+            ("mine", "Translate to French.\nKeep \"quotes\".")
+        ],
         "custom prompts keep file order"
     );
 }
 
-/// What Rust writes has exactly the keys and values Python writes, so the Python app can read it.
+/// What Rust writes has exactly the keys and values Python writes, so the Python app can read it,
+/// plus only the additive Rust-only keys (`whisper.quantization`), which Python ignores.
 #[test]
 fn rust_output_matches_python_output() {
     for py in [PY_DEFAULTS, PY_CUSTOM] {
         let cfg = AppConfig::from_toml_str(py).unwrap();
-        let ours: toml::Table = toml::from_str(&cfg.to_toml_string().unwrap()).unwrap();
+        let mut ours: toml::Table = toml::from_str(&cfg.to_toml_string().unwrap()).unwrap();
+        let whisper = ours["whisper"].as_table_mut().unwrap();
+        assert_eq!(
+            whisper.remove("quantization").unwrap().as_str(),
+            Some("q5_0")
+        );
         let theirs: toml::Table = toml::from_str(py).unwrap();
         assert_eq!(ours, theirs);
     }
@@ -84,7 +101,10 @@ fn round_trip_preserves_everything() {
     c.llm.custom_prompts.insert("a".into(), "A".into());
     let back = AppConfig::from_toml_str(&c.to_toml_string().unwrap()).unwrap();
     assert_eq!(back, c);
-    assert_eq!(back.llm.custom_prompts.keys().collect::<Vec<_>>(), ["b", "a"]);
+    assert_eq!(
+        back.llm.custom_prompts.keys().collect::<Vec<_>>(),
+        ["b", "a"]
+    );
 }
 
 /// Python `test_unknown_keys_are_ignored`, plus missing sections/keys taking defaults.

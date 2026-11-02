@@ -47,7 +47,9 @@ pub fn find_device<'a>(devices: &'a [InputDevice], name: &str) -> Option<&'a Inp
         return Some(d);
     }
     let low = name.to_lowercase();
-    devices.iter().find(|d| d.name.to_lowercase().contains(&low))
+    devices
+        .iter()
+        .find(|d| d.name.to_lowercase().contains(&low))
 }
 
 /// Lists and opens input devices.
