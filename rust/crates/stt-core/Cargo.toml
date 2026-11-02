@@ -24,6 +24,8 @@ keyring.workspace = true
 # Integration tests in tests/ use the fakes.
 stt-core = { path = ".", features = ["fakes"] }
 toml.workspace = true
+# Fingerprints of real keyring values in tests/keyring_compat.rs (never prints a value).
+sha2 = "0.10.9"
 
 [lints]
 workspace = true

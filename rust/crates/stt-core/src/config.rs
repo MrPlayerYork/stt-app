@@ -11,9 +11,9 @@
 //! - New Rust-only keys must be additive: add the field with `#[serde(default)]` and a default that keeps
 //!   the Python behaviour.
 //!
-//! Load/save (atomic write via a temp file + rename in the same directory) are owned by P2-1; until then
-//! [`load_config`] and [`save_config`] are `todo!()`. Parsing and serializing ([`AppConfig::from_toml_str`],
-//! [`AppConfig::to_toml_string`]) and the path helpers are implemented.
+//! [`load_config`] / [`save_config`] read and write the file (save is atomic: temp file + rename in the same
+//! directory). Parsing and serializing ([`AppConfig::from_toml_str`], [`AppConfig::to_toml_string`]) and the
+//! path helpers are also here.
 
 use std::path::{Path, PathBuf};
 
@@ -419,24 +419,27 @@ fn expand_tilde(p: &str) -> PathBuf {
 }
 
 /// Load the config from [`config_path`]. `Ok(None)` when the file does not exist (first run).
-///
-/// **Stub, owned by P2-1.**
 pub fn load_config() -> Result<Option<AppConfig>, ConfigError> {
     load_config_from(&config_path()?)
 }
 
-/// Load the config from `path`. `Ok(None)` when the file does not exist.
-///
-/// **Stub, owned by P2-1** (read the file, [`AppConfig::from_toml_str`], map I/O errors to
-/// [`ConfigError::Io`]).
+/// Load the config from `path`. `Ok(None)` when the file does not exist (first run). Any other read
+/// failure is [`ConfigError::Io`]; invalid TOML is [`ConfigError::Parse`] (Python raises there too).
 pub fn load_config_from(path: &Path) -> Result<Option<AppConfig>, ConfigError> {
-    let _ = path;
-    todo!("P2-1: load_config_from")
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(source) => {
+            return Err(ConfigError::Io {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    };
+    AppConfig::from_toml_str(&text).map(Some)
 }
 
 /// Save the config to [`config_path`], creating parent directories.
-///
-/// **Stub, owned by P2-1.**
 pub fn save_config(cfg: &AppConfig) -> Result<(), ConfigError> {
     save_config_to(cfg, &config_path()?)
 }
@@ -444,10 +447,62 @@ pub fn save_config(cfg: &AppConfig) -> Result<(), ConfigError> {
 /// Save the config to `path` atomically: write a temp file in the same directory
 /// (`.config-*.tmp`), then rename over `path`; remove the temp file on failure.
 ///
-/// **Stub, owned by P2-1.**
+/// Like Python's `save_config`: the parent directory is created if missing, the temp file is created
+/// with mode 0600 on Unix (as `tempfile.mkstemp` does), and serialization happens before anything touches
+/// the disk, so a failed save leaves the previous file intact.
 pub fn save_config_to(cfg: &AppConfig, path: &Path) -> Result<(), ConfigError> {
-    let _ = (cfg, path);
-    todo!("P2-1: save_config_to (atomic write)")
+    let text = cfg.to_toml_string()?;
+    let io = |source| ConfigError::Io {
+        path: path.to_path_buf(),
+        source,
+    };
+    let dir = match path.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => dir,
+        _ => Path::new("."),
+    };
+    std::fs::create_dir_all(dir).map_err(io)?;
+
+    let (tmp_path, mut file) = create_temp_file(dir).map_err(io)?;
+    let written = std::io::Write::write_all(&mut file, text.as_bytes())
+        .and_then(|()| file.sync_all())
+        .and_then(|()| std::fs::rename(&tmp_path, path));
+    drop(file);
+    if let Err(source) = written {
+        // After a successful rename the temp name is gone, so this is a no-op then.
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(io(source));
+    }
+    Ok(())
+}
+
+/// Create a new `.config-<unique>.tmp` file in `dir` (private to the user on Unix, like Python's
+/// `mkstemp`). Retries on the rare name collision.
+fn create_temp_file(dir: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut last_err = None;
+    for _ in 0..100 {
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp = dir.join(format!(".config-{}-{nanos:x}-{n}.tmp", std::process::id()));
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        match opts.open(&tmp) {
+            Ok(file) => return Ok((tmp, file)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last_err = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| std::io::Error::other("could not create a temp file")))
 }
 
 #[cfg(test)]
