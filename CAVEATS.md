@@ -29,3 +29,13 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
   default (Python failed instead). Fine, or should the app warn?
 - [ ] `whisper.device = "cuda"` is still what gets written (so the Python app can read the file); `"gpu"`/`"vulkan"`
   are accepted on read. Revisit once the Python app is retired.
+
+## From the Phase 2 crates
+- [ ] **Stalled download can hang (stt-download):** `ureq` only has a whole-body timeout, no per-read timeout, so a
+  connection that stops sending mid-file could hang that download. Fix: a read-idle watchdog per connection, or a
+  socket read timeout. Matters for multi-GB models on flaky Wi-Fi.
+- [ ] **LLM error wording (stt-llm):** `LlmError` has no free-text variant, so some messages read differently from
+  Python (e.g. "HTTP 401: Authentication failed…" instead of Python's text; timeouts and connection failures use
+  generic variants). Cosmetic. Fix if wanted: add `LlmError::Other(String)` and use the Python strings.
+- [ ] **Unknown download size (stt-download):** now streams without resume support instead of failing like Python.
+  Probably fine (HF always sends a size).
