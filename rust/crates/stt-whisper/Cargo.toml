@@ -10,7 +10,7 @@ publish.workspace = true
 # Only the `stt` binary may depend on this crate (AGENTS.md).
 #
 # `whisper` is OFF by default so `cargo check --workspace` never compiles whisper.cpp while this crate is
-# a stub. P2-8 wires it up (and decides whether the binary enables it or it becomes a plain dependency).
+# a stub. The `stt` binary enables it (Phase 3); stt-whisper stays a plain dependency of it.
 # Building with it ON needs the `heavy` board slot.
 [features]
 default = []
@@ -24,6 +24,12 @@ whisper-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
 stt-core = { workspace = true, features = ["fakes"] }
+# WAV loading for the GPU tests and the bench example.
+hound = "3"
 
 [lints]
 workspace = true
+
+[[example]]
+name = "bench"
+required-features = ["whisper"]

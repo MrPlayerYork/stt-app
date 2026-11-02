@@ -3,6 +3,8 @@
 [build]
 jobs = 2
 rustc-wrapper = "sccache"
+# Vulkan (whisper.cpp): -lvulkan comes from brew, so link and run with its lib dir.
+rustflags = ["-L", "/home/linuxbrew/.linuxbrew/lib", "-C", "link-arg=-Wl,-rpath,/home/linuxbrew/.linuxbrew/lib"]
 
 [env]
 # The system pkg-config does not search brew; Vulkan, ALSA, etc. come from brew.
@@ -13,3 +15,9 @@ SCCACHE_DIR = "<data-drive>/.sccache"
 CMAKE_GENERATOR = "Ninja"
 CMAKE_C_COMPILER_LAUNCHER = "sccache"
 CMAKE_CXX_COMPILER_LAUNCHER = "sccache"
+
+# Vulkan SDK stand-in: brew does not link vulkan-headers, so rust/vk-sdk/ (gitignored) symlinks it
+# (see AGENTS.md, "Building whisper.cpp with Vulkan").
+VULKAN_SDK = { value = "vk-sdk", relative = true }
+CMAKE_INCLUDE_PATH = "/home/linuxbrew/.linuxbrew/opt/vulkan-headers/include"
+CMAKE_LIBRARY_PATH = "/home/linuxbrew/.linuxbrew/lib"
