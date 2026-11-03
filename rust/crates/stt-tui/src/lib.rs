@@ -14,6 +14,7 @@
 #![warn(missing_docs)]
 
 pub mod app;
+pub mod click;
 pub mod mic;
 pub mod model;
 pub mod runner;

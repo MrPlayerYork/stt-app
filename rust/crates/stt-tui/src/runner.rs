@@ -7,7 +7,10 @@
 use std::io;
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+    MouseEventKind,
+};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -15,6 +18,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders};
 
 use crate::app::{App, FlashKind, Tab};
+use crate::click::{self, Click};
 use crate::mic::MicStatus;
 use crate::screen::{Layer, Nav, Screen};
 use crate::theme;
@@ -116,6 +120,27 @@ impl Ui {
         }
     }
 
+    /// Route a mouse event: a left click on something clickable acts like its key (or switches tab, or
+    /// goes to the top screen's `on_click`); the wheel scrolls like ↑↓. Uses the map from the last draw.
+    pub fn on_mouse(&mut self, app: &mut App, ev: MouseEvent) {
+        let plain = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        match ev.kind {
+            MouseEventKind::Down(MouseButton::Left) => match click::hit(ev.column, ev.row) {
+                Some(Click::Key(k)) => self.on_key(app, k),
+                Some(Click::Tab(t)) if self.overlays.is_empty() => app.tab = t,
+                Some(Click::Tag(tag)) => {
+                    let from_overlay = !self.overlays.is_empty();
+                    let nav = self.top(app).on_click(app, tag);
+                    self.apply(app, nav, from_overlay);
+                }
+                _ => {}
+            },
+            MouseEventKind::ScrollUp => self.on_key(app, plain(KeyCode::Up)),
+            MouseEventKind::ScrollDown => self.on_key(app, plain(KeyCode::Down)),
+            _ => {}
+        }
+    }
+
     /// Route pasted text to the top screen.
     pub fn on_paste(&mut self, app: &mut App, text: &str) {
         let from_overlay = !self.overlays.is_empty();
@@ -134,6 +159,7 @@ impl Ui {
     /// Draw everything.
     pub fn draw(&mut self, app: &App, frame: &mut Frame) {
         let area = frame.area();
+        click::clear();
         let recording = self.top_ref(app).is_recording(app);
         let color = if recording { theme::REC } else { theme::BORDER };
 
@@ -149,10 +175,18 @@ impl Ui {
                 Style::new().fg(theme::REC).add_modifier(Modifier::BOLD),
             ));
         } else {
+            // Titles start one cell in from the corner, then the leading " ".
+            let mut x = area.x + 2;
             for (i, t) in Tab::ALL.iter().enumerate() {
                 if i > 0 {
                     top.push(Span::styled("│", Style::new().fg(color)));
+                    x += 1;
                 }
+                let w = t.title().chars().count() as u16 + 2;
+                if self.overlays.is_empty() {
+                    click::add_frame(Rect::new(x, area.y, w, 1), Click::Tab(*t));
+                }
+                x += w;
                 let style = if *t == app.tab {
                     Style::new().add_modifier(Modifier::BOLD | Modifier::REVERSED)
                 } else {
@@ -184,10 +218,13 @@ impl Ui {
             None => Line::styled(format!(" stt {} ", env!("CARGO_PKG_VERSION")), theme::dim()),
         };
         let mut bottom = vec![Span::raw(" ")];
-        bottom.extend(theme::hint_spans(&self.top_ref(app).hints(app)));
+        let mut hints = self.top_ref(app).hints(app);
         if self.overlays.is_empty() && !recording {
-            bottom.extend(theme::hint_spans(&[("Tab", "switch".into())]));
+            hints.push(("Tab", "switch".into()));
         }
+        bottom.extend(theme::hint_spans(&hints));
+        let bottom_y = area.y + area.height.saturating_sub(1);
+        click::add_hints(area.x + 2, bottom_y, &hints, true);
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -205,9 +242,11 @@ impl Ui {
 
         let first_full = self.overlays.iter().rposition(|o| o.layer() == Layer::Full);
         if first_full.is_none() {
+            click::begin_screen();
             self.tabs[app.tab.index()].render(app, frame, body);
         }
         for o in &mut self.overlays[first_full.unwrap_or(0)..] {
+            click::begin_screen();
             let r = match o.layer() {
                 Layer::Full => body,
                 Layer::Popup { width, height } => theme::centered(body, width, height),
@@ -231,7 +270,17 @@ pub fn run(app: &mut App, startup: Vec<Box<dyn Screen>>) -> io::Result<()> {
         ui.push(s);
     }
     let mut terminal = ratatui::init();
-    crossterm::execute!(io::stdout(), crossterm::event::EnableBracketedPaste)?;
+    // ratatui's panic hook restores the screen but not mouse reporting; turn that off first.
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = crossterm::execute!(io::stdout(), crossterm::event::DisableMouseCapture);
+        prev(info);
+    }));
+    crossterm::execute!(
+        io::stdout(),
+        crossterm::event::EnableBracketedPaste,
+        crossterm::event::EnableMouseCapture
+    )?;
     let res = (|| -> io::Result<()> {
         while !app.quit {
             terminal.draw(|f| ui.draw(app, f))?;
@@ -239,6 +288,7 @@ pub fn run(app: &mut App, startup: Vec<Box<dyn Screen>>) -> io::Result<()> {
                 match event::read()? {
                     Event::Key(k) if k.kind != KeyEventKind::Release => ui.on_key(app, k),
                     Event::Paste(text) => ui.on_paste(app, &text),
+                    Event::Mouse(m) => ui.on_mouse(app, m),
                     _ => {}
                 }
             }
@@ -246,7 +296,11 @@ pub fn run(app: &mut App, startup: Vec<Box<dyn Screen>>) -> io::Result<()> {
         }
         Ok(())
     })();
-    let _ = crossterm::execute!(io::stdout(), crossterm::event::DisableBracketedPaste);
+    let _ = crossterm::execute!(
+        io::stdout(),
+        crossterm::event::DisableMouseCapture,
+        crossterm::event::DisableBracketedPaste
+    );
     ratatui::restore();
     res
 }
@@ -277,7 +331,101 @@ mod tests {
             s.contains("Main") && s.contains("History") && s.contains("Settings"),
             "{s}"
         );
-        assert!(s.contains("stt 0.1.0"), "{s}");
+        assert!(
+            s.contains(concat!("stt ", env!("CARGO_PKG_VERSION"))),
+            "{s}"
+        );
+    }
+
+    /// Cell (x, y) where `needle` starts in a rendered screen.
+    fn find(screen: &str, needle: &str) -> (u16, u16) {
+        for (y, line) in screen.lines().enumerate() {
+            if let Some(b) = line.find(needle) {
+                return (line[..b].chars().count() as u16, y as u16);
+            }
+        }
+        panic!("{needle:?} not on screen:\n{screen}");
+    }
+
+    fn click_at(ui: &mut Ui, app: &mut App, (x, y): (u16, u16)) {
+        ui.on_mouse(
+            app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+    }
+
+    #[test]
+    fn clicks_switch_tabs_open_rows_and_press_hints() {
+        let (mut app, _h) = test_app();
+        let mut ui = Ui::new();
+        let s = render_ui(&mut ui, &app, 100, 30);
+        click_at(&mut ui, &mut app, find(&s, "Settings"));
+        assert_eq!(app.tab, Tab::Settings);
+
+        let s = render_ui(&mut ui, &app, 100, 30);
+        click_at(&mut ui, &mut app, find(&s, "Microphone"));
+        assert_eq!(ui.overlay_count(), 1, "row click opens the section");
+
+        let s = render_ui(&mut ui, &app, 100, 30);
+        let (x, y) = find(&s, "[Esc] back");
+        click_at(&mut ui, &mut app, (x + 3, y));
+        assert_eq!(ui.overlay_count(), 0, "hint click acts like its key");
+
+        let s = render_ui(&mut ui, &app, 100, 30);
+        click_at(&mut ui, &mut app, find(&s, "History"));
+        assert_eq!(app.tab, Tab::History);
+    }
+
+    #[test]
+    fn tabs_ignore_clicks_while_an_overlay_is_open_and_wheel_scrolls() {
+        let (mut app, _h) = test_app();
+        let mut ui = Ui::new();
+        app.tab = Tab::Settings;
+        render_ui(&mut ui, &app, 100, 30);
+        ui.on_mouse(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 10,
+                row: 5,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        let s = render_ui(&mut ui, &app, 100, 30);
+        assert!(s.contains("› 2"), "wheel moved the cursor to row 2:\n{s}");
+        ui.push(Box::new(crate::widgets::Confirm::new("Sure?", |_| {
+            Nav::Stay
+        })));
+        let s = render_ui(&mut ui, &app, 100, 30);
+        click_at(&mut ui, &mut app, find(&s, "Main"));
+        assert_eq!(app.tab, Tab::Settings);
+        let (x, y) = find(&s, "[n] no");
+        click_at(&mut ui, &mut app, (x + 1, y));
+        assert_eq!(ui.overlay_count(), 0, "confirm buttons click");
+    }
+
+    #[test]
+    fn pick_list_rows_click() {
+        let (mut app, _h) = test_app();
+        let mut ui = Ui::new();
+        ui.push(Box::new(crate::widgets::PickList::new(
+            "Model",
+            vec!["alpha".into(), "beta".into()],
+            Some(0),
+            |app, i| {
+                app.cfg.whisper.model = format!("picked {i}");
+                Nav::Stay
+            },
+        )));
+        let s = render_ui(&mut ui, &app, 100, 30);
+        click_at(&mut ui, &mut app, find(&s, "beta"));
+        assert_eq!(app.cfg.whisper.model, "picked 1");
+        assert_eq!(ui.overlay_count(), 0);
     }
 
     #[test]

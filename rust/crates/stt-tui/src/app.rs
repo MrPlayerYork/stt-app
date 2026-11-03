@@ -239,6 +239,7 @@ impl App {
     /// (Re)open the configured microphone in the background (hot mic).
     pub fn open_mic(&mut self) {
         let name = self.cfg.audio.device_name.clone();
+        self.mic.set_gain(self.cfg.audio.gain);
         self.mic.open(self.services.audio.clone(), name.as_deref());
     }
 

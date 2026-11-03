@@ -19,6 +19,18 @@ fn main() {
     println!("open: {:?} open={}", t.elapsed(), rec.is_open());
     std::thread::sleep(Duration::from_secs(1));
     println!("listening level: {:.4}", rec.level());
+    // Meter refresh: how often the level value changes (one change per callback block).
+    let (mut changes, mut last) = (0u32, rec.level());
+    let t = Instant::now();
+    while t.elapsed() < Duration::from_secs(2) {
+        let l = rec.level();
+        if l != last {
+            changes += 1;
+            last = l;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    println!("meter updates: {:.1}/s", changes as f32 / 2.0);
     for i in 0..2 {
         let t = Instant::now();
         rec.start().expect("start");

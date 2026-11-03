@@ -356,6 +356,29 @@ pub fn evaluate(
     rank(results)
 }
 
+/// Where calibration aims the speech level (the loud-frame RMS from [`analyze_audio`]), in dBFS. On the
+/// app's meter (RMS × 6) that is a bit over half the bar: green, with loud words reaching yellow.
+pub const TARGET_SPEECH_DB: f64 = -21.0;
+/// Within this many dB of the target, no gain is suggested (1.0).
+pub const GAIN_DEADBAND_DB: f64 = 2.0;
+/// A clip fraction above this gets a warning: the mic's own input volume is too high, which in-app
+/// gain can't fix.
+pub const CLIP_WARN_FRAC: f64 = 0.001;
+
+/// The in-app gain that brings speech at `rms_db` to [`TARGET_SPEECH_DB`], clamped to
+/// `min..=max` and rounded to 2 decimals. 1.0 for silence or when already close.
+pub fn suggest_gain(rms_db: f64, min: f32, max: f32) -> f32 {
+    if rms_db <= QUIET_DB - 20.0 {
+        return 1.0;
+    }
+    let diff = TARGET_SPEECH_DB - rms_db;
+    if diff.abs() <= GAIN_DEADBAND_DB {
+        return 1.0;
+    }
+    let g = (10f64.powf(diff / 20.0) as f32).clamp(min, max);
+    (g * 100.0).round() / 100.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,6 +415,16 @@ mod tests {
             score,
             error: error.map(str::to_owned),
         }
+    }
+
+    #[test]
+    fn gain_targets_speech_level() {
+        assert_eq!(suggest_gain(-21.0, 0.05, 8.0), 1.0);
+        assert_eq!(suggest_gain(-22.5, 0.05, 8.0), 1.0, "inside the dead band");
+        assert_eq!(suggest_gain(-9.0, 0.05, 8.0), 0.25, "12 dB too hot");
+        assert_eq!(suggest_gain(-33.0, 0.05, 8.0), 3.98, "12 dB too quiet");
+        assert_eq!(suggest_gain(-60.0, 0.05, 8.0), 8.0, "clamped");
+        assert_eq!(suggest_gain(FLOOR_DB, 0.05, 8.0), 1.0, "silence: leave it");
     }
 
     #[test]

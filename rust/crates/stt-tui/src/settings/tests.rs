@@ -439,3 +439,65 @@ fn tab_and_ctrl_c_pass_through_on_the_tab() {
     ui.on_key(&mut app, ctrl('c'));
     assert!(app.quit);
 }
+
+#[test]
+fn mic_gain_row_edits_and_validates() {
+    let (mut app, _h) = test_app();
+    settle(&mut app);
+    let mut ui = ui();
+    typ(&mut ui, &mut app, "1");
+    assert!(screen(&mut ui, &app).contains("×1.00 (off)"));
+    typ(&mut ui, &mut app, "4");
+    ui.on_key(&mut app, ctrl('u'));
+    typ(&mut ui, &mut app, "-6 dB");
+    press(&mut ui, &mut app, KeyCode::Enter);
+    assert_eq!(app.cfg.audio.gain, 0.5);
+    assert_eq!(app.mic.gain(), 0.5);
+    assert!(screen(&mut ui, &app).contains("×0.50"));
+    typ(&mut ui, &mut app, "4");
+    ui.on_key(&mut app, ctrl('u'));
+    typ(&mut ui, &mut app, "99");
+    press(&mut ui, &mut app, KeyCode::Enter);
+    assert_eq!(app.cfg.audio.gain, 0.5, "out of range is refused");
+    assert!(matches!(
+        app.flash.as_ref().map(|f| f.kind),
+        Some(FlashKind::Error)
+    ));
+}
+
+#[test]
+fn parse_gain_forms() {
+    use super::mic::parse_gain;
+    assert_eq!(parse_gain("0.5"), Some(0.5));
+    assert_eq!(parse_gain("×2"), Some(2.0));
+    assert_eq!(parse_gain("x0.25"), Some(0.25));
+    assert_eq!(parse_gain("+6 dB"), Some(2.0));
+    assert_eq!(parse_gain("abc"), None);
+    assert_eq!(parse_gain("0"), None);
+}
+
+#[test]
+fn clicking_a_choice_row_cycles_it() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    let (mut app, _h) = test_app();
+    let mut ui = ui();
+    typ(&mut ui, &mut app, "3");
+    let before = app.cfg.llm.unload_on_exit;
+    let shown = screen(&mut ui, &app);
+    let (x, y) = shown
+        .lines()
+        .enumerate()
+        .find_map(|(y, l)| l.find("Unload model").map(|b| (l[..b].chars().count(), y)))
+        .expect("row on screen");
+    ui.on_mouse(
+        &mut app,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: x as u16,
+            row: y as u16,
+            modifiers: KeyModifiers::NONE,
+        },
+    );
+    assert_eq!(app.cfg.llm.unload_on_exit, !before);
+    assert_eq!(ui.overlay_count(), 1, "cycling stays in the section");
+}

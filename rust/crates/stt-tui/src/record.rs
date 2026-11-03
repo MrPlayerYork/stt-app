@@ -14,6 +14,7 @@ use ratatui::widgets::Paragraph;
 use stt_core::{AppConfig, Clipboard, ClipboardMethod, LlmResult, SecretStore, Transcriber};
 
 use crate::app::{App, FlashKind, HistoryItem};
+use crate::click::Click;
 use crate::main_tab::{header_lines, mic_line};
 use crate::mic::MicStatus;
 use crate::screen::{Hint, Nav, Screen};
@@ -256,23 +257,36 @@ impl Screen for RecordScreen {
     fn render(&mut self, app: &App, frame: &mut Frame, area: Rect) {
         match &self.phase {
             Phase::Recording => {
-                let [head, _, meter, _, keys, _] = Layout::vertical([
+                // One meter only: the Mic row's (the user preferred the small one over a full-width bar).
+                let [head, _, keys] = Layout::vertical([
                     Constraint::Length(1),
                     Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Min(0),
+                    Constraint::Length(2),
                 ])
-                .areas(area);
+                .areas(theme::vcenter(area, 4));
                 frame.render_widget(Paragraph::new(mic_line(app, area.width)), head);
                 if matches!(app.mic.status(), MicStatus::Recording { .. }) {
-                    let w = area.width.saturating_sub(2) as usize;
-                    frame.render_widget(
-                        Paragraph::new(theme::meter(app.mic.level(), w, true)),
-                        meter,
-                    );
                     let k = Style::new().fg(theme::KEY).add_modifier(Modifier::BOLD);
+                    let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+                    let cancel = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+                    // "Enter  stop and transcribe      " then "Ctrl+C  cancel (throws it away)".
+                    crate::click::add(
+                        Rect {
+                            width: 26,
+                            height: 1,
+                            ..keys
+                        },
+                        Click::Key(enter),
+                    );
+                    crate::click::add(
+                        Rect {
+                            x: keys.x + 32,
+                            width: 31,
+                            height: 1,
+                            ..keys
+                        },
+                        Click::Key(cancel),
+                    );
                     frame.render_widget(
                         Paragraph::new(Line::from(vec![
                             Span::styled("Enter", k),
@@ -283,18 +297,24 @@ impl Screen for RecordScreen {
                         keys,
                     );
                 } else {
-                    frame.render_widget(
-                        Paragraph::new(Line::styled(
-                            "opening the microphone…",
-                            Style::new().fg(theme::WARN),
-                        )),
-                        meter,
+                    let cancel = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+                    crate::click::add(
+                        Rect {
+                            y: keys.y + 1,
+                            width: 14,
+                            height: 1,
+                            ..keys
+                        },
+                        Click::Key(cancel),
                     );
                     frame.render_widget(
-                        Paragraph::new(Line::from(vec![
-                            Span::styled("Ctrl+C", Style::new().fg(theme::KEY)),
-                            Span::raw("  cancel"),
-                        ])),
+                        Paragraph::new(vec![
+                            Line::styled("opening the microphone…", Style::new().fg(theme::WARN)),
+                            Line::from(vec![
+                                Span::styled("Ctrl+C", Style::new().fg(theme::KEY)),
+                                Span::raw("  cancel"),
+                            ]),
+                        ]),
                         keys,
                     );
                 }
@@ -308,7 +328,8 @@ impl Screen for RecordScreen {
                     theme::WARN,
                     "Waiting for the Whisper model…".into(),
                 ));
-                frame.render_widget(Paragraph::new(lines), area);
+                let h = lines.len() as u16;
+                frame.render_widget(Paragraph::new(lines), theme::vcenter(area, h));
             }
             Phase::Working {
                 progress,
@@ -354,7 +375,8 @@ impl Screen for RecordScreen {
                 if p.copying {
                     lines.push(step(spin, theme::WARN, "Copying to the clipboard…".into()));
                 }
-                frame.render_widget(Paragraph::new(lines), area);
+                let h = lines.len() as u16;
+                frame.render_widget(Paragraph::new(lines), theme::vcenter(area, h));
             }
             Phase::StartFailed(msg) => {
                 frame.render_widget(
@@ -507,6 +529,35 @@ mod tests {
         assert!(app.last_result.is_none());
         assert!(app.flash.as_ref().unwrap().text.starts_with("Copied"));
         assert!(!app.llm_used);
+    }
+
+    #[test]
+    fn recording_is_centred_and_its_keys_click() {
+        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+        let (mut app, h) = test_app();
+        let mut ui = start(&mut app);
+        let shown = render_ui(&mut ui, &app, 80, 24);
+        let row = shown.lines().position(|l| l.contains("RECORDING")).unwrap();
+        assert!(
+            (8..=12).contains(&row),
+            "mic line near the middle, got row {row}:\n{shown}"
+        );
+        let line = shown.lines().nth(row + 2).unwrap();
+        let x = line
+            .find("Enter")
+            .map(|b| line[..b].chars().count())
+            .unwrap() as u16;
+        ui.on_mouse(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: x + 2,
+                row: row as u16 + 2,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        pump(&mut ui, &mut app);
+        assert_eq!(h.clipboard.copies(), vec!["hello world".to_string()]);
     }
 
     #[test]

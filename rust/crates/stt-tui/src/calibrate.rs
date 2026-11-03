@@ -109,10 +109,20 @@ impl CalibrationScreen {
             return Nav::Stay;
         }
         let name = s.device.name.clone();
+        let gain = gain_for(s);
+        let clipped = s.clip_frac > stt_calibrate::CLIP_WARN_FRAC;
         app.cfg.audio.device_name = Some(name.clone());
+        app.cfg.audio.gain = gain;
         app.save();
         app.open_mic();
-        app.flash_ok(format!("Microphone set: {name}"));
+        if clipped {
+            app.flash(
+                crate::app::FlashKind::Warn,
+                format!("{name}: clipping, lower its input volume in system settings"),
+            );
+        } else {
+            app.flash_ok(format!("Microphone set: {name} · gain ×{gain:.2}"));
+        }
         Nav::Pop
     }
 
@@ -173,6 +183,11 @@ impl CalibrationScreen {
             since: Instant::now(),
         };
     }
+}
+
+/// The in-app gain calibration suggests for a ranked device (saved as `audio.gain` on pick).
+fn gain_for(s: &MicScore) -> f32 {
+    stt_calibrate::suggest_gain(s.rms_db, stt_core::GAIN_MIN, stt_core::GAIN_MAX)
 }
 
 fn clock(secs: f64) -> String {
@@ -255,7 +270,7 @@ impl Screen for CalibrationScreen {
                         ));
                     } else {
                         let lvl = levels.get(&d.id).copied().unwrap_or(0.0);
-                        spans.extend(theme::meter(lvl, 24, true).spans);
+                        spans.extend(theme::meter(lvl, 24).spans);
                     }
                     lines.push(Line::from(spans));
                 }
@@ -287,18 +302,23 @@ impl Screen for CalibrationScreen {
                     .map(|s| s.device.name.chars().count())
                     .max()
                     .unwrap_or(10)
-                    .min((area.width as usize).saturating_sub(48).max(12));
+                    .min((area.width as usize).saturating_sub(55).max(12));
                 let mut lines = vec![Line::styled(
                     format!(
-                        "    {:<name_w$} {:>4} {:>8} {:>7} {:>6}",
-                        "Microphone", "Acc", "Level", "SNR", "Clip"
+                        "    {:<name_w$} {:>4} {:>8} {:>7} {:>6} {:>6}",
+                        "Microphone", "Acc", "Level", "SNR", "Clip", "Gain"
                     ),
                     theme::dim(),
                 )];
                 let reserved = 1 + if any_ok { 0 } else { 2 };
                 let per_page = (inner_h.saturating_sub(reserved) / 2).max(1);
                 let start = (selected + 1).saturating_sub(per_page);
+                let panel_inner = theme::panel("").inner(area);
                 for (i, s) in ranked.iter().enumerate().skip(start).take(per_page) {
+                    // Header line, then two lines per device: both are clickable.
+                    let line = 1 + (i - start) * 2;
+                    crate::click::add_row(panel_inner, line, i);
+                    crate::click::add_row(panel_inner, line + 1, i);
                     let cur = if i == *selected { theme::CURSOR } else { "  " };
                     let num = format!("{}", i + 1);
                     let row_style = if i == *selected {
@@ -308,14 +328,15 @@ impl Screen for CalibrationScreen {
                     };
                     let stats = if s.is_ok() {
                         format!(
-                            "{:>3.0}% {:>6.1}dB {:>5.1}dB {:>5.1}%",
+                            "{:>3.0}% {:>6.1}dB {:>5.1}dB {:>5.1}% {:>6}",
                             s.accuracy * 100.0,
                             s.rms_db,
                             s.snr_db,
-                            s.clip_frac * 100.0
+                            s.clip_frac * 100.0,
+                            format!("×{:.2}", gain_for(s))
                         )
                     } else {
-                        format!("{:>4} {:>8} {:>7} {:>6}", "-", "-", "-", "-")
+                        format!("{:>4} {:>8} {:>7} {:>6} {:>6}", "-", "-", "-", "-", "-")
                     };
                     lines.push(Line::styled(
                         format!("{cur}{num:<2}{} {stats}", fit(&s.device.name, name_w)),
@@ -329,6 +350,12 @@ impl Screen for CalibrationScreen {
                             Style::new().fg(theme::ERR),
                         ));
                     } else {
+                        if s.clip_frac > stt_calibrate::CLIP_WARN_FRAC {
+                            spans.push(Span::styled(
+                                "clipping: lower its input volume in system settings · ",
+                                Style::new().fg(theme::ERR),
+                            ));
+                        }
                         if best.as_deref() == Some(&s.device.name) {
                             spans.push(Span::styled(
                                 "suggested · ",
@@ -453,6 +480,15 @@ impl Screen for CalibrationScreen {
             _ => {}
         }
         Nav::Stay
+    }
+
+    /// Clicking a device in the ranking picks it (like its number key).
+    fn on_click(&mut self, app: &mut App, i: usize) -> Nav {
+        if matches!(self.step, Step::Results { .. }) {
+            self.pick(app, i)
+        } else {
+            Nav::Stay
+        }
     }
 
     fn hints(&self, _app: &App) -> Vec<Hint> {

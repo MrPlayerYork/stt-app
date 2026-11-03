@@ -81,6 +81,9 @@ impl Screen for HistoryTab {
             })
             .collect();
         frame.render_widget(Paragraph::new(lines), inner);
+        for (line, i) in (top..app.history.len()).take(rows).enumerate() {
+            crate::click::add_row(inner, line, i);
+        }
 
         let block = theme::panel("Preview");
         let inner = block.inner(prev_a);
@@ -91,6 +94,14 @@ impl Screen for HistoryTab {
                 inner,
             );
         }
+    }
+
+    /// Clicking an item selects it (Enter or `[Enter/c] copy` then copies it).
+    fn on_click(&mut self, app: &mut App, i: usize) -> Nav {
+        if i < app.history.len() {
+            self.sel = i;
+        }
+        Nav::Stay
     }
 
     fn on_key(&mut self, app: &mut App, key: KeyEvent) -> Nav {

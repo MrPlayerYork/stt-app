@@ -83,6 +83,12 @@ pub trait Screen {
         Nav::Stay
     }
 
+    /// A click on a region this screen registered with [`crate::click::Click::Tag`] (e.g. a row).
+    /// Default: ignored.
+    fn on_click(&mut self, _app: &mut App, _tag: usize) -> Nav {
+        Nav::Stay
+    }
+
     /// Key hints for the bottom border.
     fn hints(&self, _app: &App) -> Vec<Hint> {
         Vec::new()

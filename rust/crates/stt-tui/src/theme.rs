@@ -64,15 +64,38 @@ pub fn mic_dot(recording: bool, open: bool) -> Span<'static> {
 }
 
 /// Level meter `▮▮▮▯▯▯` of `width` cells. Speech RMS is small, so the level is scaled by 6 first
-/// (as in Python). Red while recording, green otherwise.
-pub fn meter(level: f32, width: usize, recording: bool) -> Line<'static> {
+/// (as in Python). Lit cells take the colour of their zone: green up to [`METER_YELLOW`] of the width
+/// (good speech), yellow up to [`METER_RED`] (loud), red above (too hot, peaks near clipping).
+pub fn meter(level: f32, width: usize) -> Line<'static> {
     let n = ((level * 6.0).clamp(0.0, 1.0) * width as f32).round() as usize;
-    let on = Style::new().fg(if recording { REC } else { OK });
-    Line::from(vec![
-        Span::styled("▮".repeat(n), on),
-        Span::styled("▯".repeat(width - n), dim()),
-    ])
+    let zone = |i: usize| {
+        let f = (i as f32 + 0.5) / width as f32;
+        if f < METER_YELLOW {
+            OK
+        } else if f < METER_RED {
+            WARN
+        } else {
+            REC
+        }
+    };
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut i = 0;
+    while i < n {
+        let c = zone(i);
+        let start = i;
+        while i < n && zone(i) == c {
+            i += 1;
+        }
+        spans.push(Span::styled("▮".repeat(i - start), Style::new().fg(c)));
+    }
+    spans.push(Span::styled("▯".repeat(width - n), dim()));
+    Line::from(spans)
 }
+
+/// Meter fraction where green turns yellow.
+pub const METER_YELLOW: f32 = 0.6;
+/// Meter fraction where yellow turns red.
+pub const METER_RED: f32 = 0.85;
 
 /// Braille spinner frame for "busy" lines, advancing about 10 times per second.
 pub fn spinner(since: Instant) -> &'static str {
@@ -99,6 +122,14 @@ pub fn centered(area: Rect, w: u16, h: u16) -> Rect {
         .flex(Flex::Center)
         .areas(v);
     r
+}
+
+/// The middle `h` rows of `area` (full width): for vertically centring a block of lines.
+pub fn vcenter(area: Rect, h: u16) -> Rect {
+    let [v] = Layout::vertical([Constraint::Length(h.min(area.height))])
+        .flex(Flex::Center)
+        .areas(area);
+    v
 }
 
 /// Truncate to `max` chars with `…`.
@@ -195,15 +226,24 @@ mod tests {
 
     #[test]
     fn meter_fills_and_clamps() {
-        let w = |l: Line| {
+        let w = |l: &Line| {
             l.spans
                 .iter()
                 .map(|s| s.content.chars().count())
                 .sum::<usize>()
         };
-        assert_eq!(w(meter(0.0, 10, false)), 10);
-        assert_eq!(w(meter(1.0, 10, true)), 10);
-        assert_eq!(meter(1.0, 10, true).spans[0].content.chars().count(), 10);
+        assert_eq!(w(&meter(0.0, 10)), 10);
+        let full = meter(1.0, 20);
+        assert_eq!(w(&full), 20);
+        let colours: Vec<_> = full.spans.iter().filter_map(|s| s.style.fg).collect();
+        assert_eq!(colours, vec![OK, WARN, REC], "green → yellow → red");
+        let quiet = meter(0.05, 20);
+        assert_eq!(
+            quiet.spans[0].style.fg,
+            Some(OK),
+            "normal speech stays green"
+        );
+        assert_eq!(quiet.spans.len(), 2);
     }
 
     #[test]

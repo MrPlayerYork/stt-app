@@ -135,6 +135,9 @@ impl<S: Section> Screen for SectionScreen<S> {
             })
             .collect();
         frame.render_widget(Paragraph::new(lines), list);
+        for i in 0..rows.len() {
+            crate::click::add_row(list, i, i);
+        }
         if !status.is_empty() {
             frame.render_widget(Paragraph::new(status), status_area);
         }
@@ -190,6 +193,22 @@ impl<S: Section> Screen for SectionScreen<S> {
 
     fn on_tick(&mut self, app: &mut App) -> Nav {
         self.section.tick(app)
+    }
+
+    /// Clicking a row selects it; a fixed-choice row cycles to the next value, any other row acts
+    /// like Enter (opens its picker, prompt or sub-section).
+    fn on_click(&mut self, app: &mut App, i: usize) -> Nav {
+        let rows = self.section.rows(app);
+        let Some(row) = rows.get(i) else {
+            return Nav::Stay;
+        };
+        self.sel = i;
+        if row.choice {
+            self.section.cycle(app, i, 1);
+            Nav::Stay
+        } else {
+            self.section.activate(app, i)
+        }
     }
 
     fn hints(&self, app: &App) -> Vec<Hint> {

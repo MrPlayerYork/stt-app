@@ -267,6 +267,14 @@ impl Screen for PickList {
         };
         let skip = self.sel.saturating_sub(skip.saturating_sub(1));
         lines.drain(..skip.min(lines.len()));
+        let visible = if self.help.is_empty() {
+            h
+        } else {
+            h.saturating_sub(2)
+        };
+        for (line, i) in (skip..self.options.len()).take(visible).enumerate() {
+            crate::click::add_row(inner, line, i);
+        }
         if !self.help.is_empty() {
             lines.push(Line::default());
             lines.push(Line::styled(self.help.clone(), theme::dim()));
@@ -295,6 +303,14 @@ impl Screen for PickList {
             }
             KeyCode::Esc => Nav::Pop,
             _ => Nav::Stay,
+        }
+    }
+
+    fn on_click(&mut self, app: &mut App, i: usize) -> Nav {
+        if i < self.options.len() {
+            self.pick(app, i)
+        } else {
+            Nav::Stay
         }
     }
 
@@ -438,6 +454,14 @@ impl Confirm {
 impl Screen for Confirm {
     fn render(&mut self, _app: &App, frame: &mut Frame, area: Rect) {
         let inner = popup_frame(frame, area, "Confirm");
+        // The y/n line sits after the (wrapped) question and a blank line.
+        let q_lines = (self.question.chars().count() as u16).div_ceil(inner.width.max(1));
+        crate::click::add_hints(
+            inner.x,
+            inner.y + q_lines + 1,
+            &[("y", "yes".into()), ("n", "no".into())],
+            false,
+        );
         frame.render_widget(
             Paragraph::new(vec![
                 Line::raw(self.question.clone()),

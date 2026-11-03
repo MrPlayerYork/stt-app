@@ -252,24 +252,58 @@ fn build_stream(target: &Target, shared: &Arc<Shared>) -> Result<(cpal::Stream, 
         .map_err(|e| format!("no usable input config: {e}"))?;
     let channels = default.channels().clamp(1, MAX_CHANNELS);
     let rate = default.sample_rate();
-    let config = cpal::StreamConfig {
+    let mut config = cpal::StreamConfig {
         channels,
         sample_rate: rate,
-        buffer_size: cpal::BufferSize::Default,
+        buffer_size: meter_block(rate, default.buffer_size()),
     };
-    let stream = match default.sample_format() {
-        cpal::SampleFormat::F32 => typed::<f32>(&device, &config, shared),
-        cpal::SampleFormat::I16 => typed::<i16>(&device, &config, shared),
-        cpal::SampleFormat::U16 => typed::<u16>(&device, &config, shared),
-        cpal::SampleFormat::I32 => typed::<i32>(&device, &config, shared),
-        cpal::SampleFormat::U32 => typed::<u32>(&device, &config, shared),
-        cpal::SampleFormat::F64 => typed::<f64>(&device, &config, shared),
-        cpal::SampleFormat::I8 => typed::<i8>(&device, &config, shared),
-        cpal::SampleFormat::U8 => typed::<u8>(&device, &config, shared),
-        other => return Err(format!("unsupported sample format {other:?}")),
+    let stream = match build_typed(&device, &config, default.sample_format(), shared) {
+        // Some backends refuse a fixed block size; their default still records, just with a slower meter.
+        Err(_) if config.buffer_size != cpal::BufferSize::Default => {
+            config.buffer_size = cpal::BufferSize::Default;
+            build_typed(&device, &config, default.sample_format(), shared)
+        }
+        r => r,
     }?;
     stream.play().map_err(|e| format!("could not start: {e}"))?;
     Ok((stream, rate))
+}
+
+/// Callback blocks per second we ask for. The level is measured per block, so this is the meter's
+/// refresh rate. PulseAudio's default record fragment is large (the meter moved about twice a second);
+/// 20 Hz keeps it live. Not smaller: with a fixed size cpal also caps the server buffer at one block.
+const METER_HZ: u32 = 20;
+
+/// A fixed block of `rate / METER_HZ` frames, clamped to what the device reports, or the default when
+/// the device's range can't hold it.
+fn meter_block(rate: u32, supported: &cpal::SupportedBufferSize) -> cpal::BufferSize {
+    let want = (rate / METER_HZ).max(1);
+    match *supported {
+        cpal::SupportedBufferSize::Range { min, max } if min <= max => {
+            cpal::BufferSize::Fixed(want.clamp(min, max))
+        }
+        cpal::SupportedBufferSize::Range { .. } => cpal::BufferSize::Default,
+        cpal::SupportedBufferSize::Unknown => cpal::BufferSize::Fixed(want),
+    }
+}
+
+fn build_typed(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    format: cpal::SampleFormat,
+    shared: &Arc<Shared>,
+) -> Result<cpal::Stream, String> {
+    match format {
+        cpal::SampleFormat::F32 => typed::<f32>(device, config, shared),
+        cpal::SampleFormat::I16 => typed::<i16>(device, config, shared),
+        cpal::SampleFormat::U16 => typed::<u16>(device, config, shared),
+        cpal::SampleFormat::I32 => typed::<i32>(device, config, shared),
+        cpal::SampleFormat::U32 => typed::<u32>(device, config, shared),
+        cpal::SampleFormat::F64 => typed::<f64>(device, config, shared),
+        cpal::SampleFormat::I8 => typed::<i8>(device, config, shared),
+        cpal::SampleFormat::U8 => typed::<u8>(device, config, shared),
+        other => Err(format!("unsupported sample format {other:?}")),
+    }
 }
 
 fn typed<T>(
@@ -321,6 +355,36 @@ mod tests {
             stop_tx: None,
             thread: None,
         }
+    }
+
+    #[test]
+    fn meter_block_is_50ms_within_device_range() {
+        use cpal::{BufferSize::Fixed, SupportedBufferSize::*};
+        assert_eq!(meter_block(48_000, &Unknown), Fixed(2_400));
+        assert_eq!(
+            meter_block(
+                48_000,
+                &Range {
+                    min: 64,
+                    max: 1_024
+                }
+            ),
+            Fixed(1_024)
+        );
+        assert_eq!(
+            meter_block(
+                16_000,
+                &Range {
+                    min: 64,
+                    max: 8_192
+                }
+            ),
+            Fixed(800)
+        );
+        assert_eq!(
+            meter_block(48_000, &Range { min: 9, max: 1 }),
+            cpal::BufferSize::Default
+        );
     }
 
     #[test]

@@ -60,6 +60,10 @@ impl Screen for SettingsTab {
         self.inner.on_tick(app)
     }
 
+    fn on_click(&mut self, app: &mut App, tag: usize) -> Nav {
+        self.inner.on_click(app, tag)
+    }
+
     fn hints(&self, app: &App) -> Vec<Hint> {
         self.inner.hints(app)
     }

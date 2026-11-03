@@ -238,7 +238,7 @@ mod empty_as_none {
 
 /// The whole config file. Top level holds `history_size` plus the `[audio]`, `[whisper]` and `[llm]`
 /// sections.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     /// TOML key `history_size`: how many dictations the history keeps (default 20; the UI uses at least 1).
@@ -263,7 +263,7 @@ impl Default for AppConfig {
 }
 
 /// `[audio]` section.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AudioConfig {
     /// Chosen microphone by device name; `None` (stored as `""`) = not chosen yet, which triggers
@@ -274,6 +274,21 @@ pub struct AudioConfig {
     pub device_name: Option<String>,
     /// Kept for compatibility (default 16000). Recording always resamples to [`crate::SAMPLE_RATE`].
     pub samplerate: u32,
+    /// Rust-only: software gain applied to the mic's samples and meter (default 1.0, range
+    /// [`GAIN_MIN`]..=[`GAIN_MAX`]). Set by calibration so speech sits in the meter's green zone; it can't
+    /// undo clipping that happened before the app got the audio. Not written while 1.0, so a default
+    /// config stays identical to Python's.
+    #[serde(skip_serializing_if = "is_unity")]
+    pub gain: f32,
+}
+
+/// Lowest allowed `audio.gain`.
+pub const GAIN_MIN: f32 = 0.05;
+/// Highest allowed `audio.gain`.
+pub const GAIN_MAX: f32 = 8.0;
+
+fn is_unity(g: &f32) -> bool {
+    *g == 1.0
 }
 
 impl Default for AudioConfig {
@@ -281,6 +296,7 @@ impl Default for AudioConfig {
         Self {
             device_name: None,
             samplerate: 16_000,
+            gain: 1.0,
         }
     }
 }

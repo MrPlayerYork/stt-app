@@ -62,7 +62,7 @@ pub(crate) fn mic_line(app: &App, width: u16) -> Line<'static> {
         theme::mic_dot(recording, listening),
         Span::raw(format!("{name:<name_w$} ")),
     ];
-    spans.extend(theme::meter(app.mic.level(), meter_w, recording).spans);
+    spans.extend(theme::meter(app.mic.level(), meter_w).spans);
     spans.push(Span::raw("  "));
     spans.push(Span::styled(word, style));
     Line::from(spans)

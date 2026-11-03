@@ -235,6 +235,17 @@ impl Walk<'_> {
         });
     }
 
+    /// A float (an integer like `1` is accepted too) that passes `ok`.
+    fn float(&mut self, t: &Table, key: &str, slot: &mut f32, ok: impl FnOnce(f32) -> bool) {
+        let d = slot.to_string();
+        self.field(t, key, slot, &d, |v| {
+            v.as_float()
+                .or_else(|| v.as_integer().map(|i| i as f64))
+                .map(|f| f as f32)
+                .filter(|f| f.is_finite() && ok(*f))
+        });
+    }
+
     fn enumeration<E: Copy + Default>(
         &mut self,
         t: &Table,
@@ -295,7 +306,10 @@ fn check_table(root: &Table, report: &mut ConfigReport) -> AppConfig {
         };
         w.opt_string(audio, "device_name", &mut cfg.audio.device_name);
         w.int(audio, "samplerate", &mut cfg.audio.samplerate, |_| true);
-        w.unknown(audio, &["device_name", "samplerate"]);
+        w.float(audio, "gain", &mut cfg.audio.gain, |g| {
+            (crate::config::GAIN_MIN..=crate::config::GAIN_MAX).contains(&g)
+        });
+        w.unknown(audio, &["device_name", "samplerate", "gain"]);
     }
 
     let wh = section(root, "whisper", report).unwrap_or(&empty);

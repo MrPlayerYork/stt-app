@@ -12,7 +12,10 @@ Run the app (real terminal only): `uv run stt-app`
 - `reference/` is the user's material: gitignored, never commit it.
 - Rewrite status: Phases 0-2 done (2026-11-01; gate passed, all 8 crates merged and green). Phase 3 done (2026-11-02): full-screen
   tabbed UI (UI_MOCKUPS.txt section D), all P3 branches merged, workspace green, `stt` builds. Next: Phase 4 (user tests
-  `rust/target/debug/stt` in Konsole; parity checklist).
+  `rust/target/debug/stt` in Konsole; parity checklist). **v1.0.0 (2026-11-02)**: user tested the Rust app
+  (fresh first-run setup, LLM reasoning), plus live 20 Hz meter with green/yellow/red zones, in-app
+  `audio.gain` set by calibration, centred recording screen, mouse support. Next: cleanup before push/archive
+  (CAVEATS.md).
   Open questions to settle along the way: [CAVEATS.md](CAVEATS.md).
 - Rust test command (from `rust/`, heavy slot): `cargo test --workspace --no-fail-fast`; GPU (gpu slot, needs
   `rust/vk-sdk` symlinks per AGENTS.md): `cargo test -p stt-whisper --features whisper --test gpu -- --ignored`

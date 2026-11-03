@@ -3,7 +3,7 @@
 use crate::app::App;
 use crate::mic::MicStatus;
 use crate::screen::Nav;
-use crate::widgets::PickList;
+use crate::widgets::{PickList, TextPrompt};
 
 use super::commit;
 use super::popups::Busy;
@@ -37,6 +37,7 @@ impl Section for MicSection {
             Row::new('1', "Current device", format!("{name} · {}", state(app))),
             Row::new('2', "Run calibration", ""),
             Row::new('3', "Pick from a list", ""),
+            Row::new('4', "Gain", gain_text(app.cfg.audio.gain)),
         ]
     }
 
@@ -47,7 +48,8 @@ impl Section for MicSection {
                 None => "The microphone in use. The stream stays open while the app runs, so recording starts instantly.".into(),
             },
             1 => "Records a short phrase on every input device and picks the one that hears you best.".into(),
-            _ => "Choose the microphone yourself from the list of input devices.".into(),
+            2 => "Choose the microphone yourself from the list of input devices.".into(),
+            _ => "Software volume for the mic's audio and meter. Calibration sets it so speech sits in the green. It can't undo clipping: if the meter hits red, lower the mic's input volume in system settings.".into(),
         }
     }
 
@@ -55,13 +57,57 @@ impl Section for MicSection {
         match i {
             0 => Nav::Stay,
             1 => Nav::Push(Box::new(crate::calibrate::CalibrationScreen::new(app))),
-            _ => pick_device(app),
+            2 => pick_device(app),
+            _ => edit_gain(app),
         }
     }
 
     fn enter_hint(&self) -> &'static str {
         "open"
     }
+}
+
+fn gain_text(g: f32) -> String {
+    let db = 20.0 * g.max(1e-6).log10();
+    if g == 1.0 {
+        "×1.00 (off)".into()
+    } else {
+        format!("×{g:.2} ({db:+.1} dB)")
+    }
+}
+
+/// Parse a gain typed as `0.5`, `x0.5`, `×0.5` or `-6 dB`.
+pub(super) fn parse_gain(text: &str) -> Option<f32> {
+    let t = text.trim().trim_start_matches(['x', 'X', '×']).trim();
+    let g = match t.strip_suffix("dB").or_else(|| t.strip_suffix("db")) {
+        Some(db) => 10f32.powf(db.trim().parse::<f32>().ok()? / 20.0),
+        None => t.parse::<f32>().ok()?,
+    };
+    (g.is_finite() && (stt_core::GAIN_MIN..=stt_core::GAIN_MAX).contains(&g))
+        .then(|| (g * 100.0).round() / 100.0)
+}
+
+fn edit_gain(app: &App) -> Nav {
+    let cur = format!("{:.2}", app.cfg.audio.gain);
+    Nav::Push(Box::new(
+        TextPrompt::new("Gain", &cur, |app, text| {
+            match parse_gain(&text) {
+                Some(g) => {
+                    app.cfg.audio.gain = g;
+                    commit(app);
+                    app.mic.set_gain(g);
+                    app.flash_ok(format!("Gain {}", gain_text(g)));
+                }
+                None => app.flash_error(format!(
+                    "Gain must be {} to {} (or dB, e.g. -6 dB)",
+                    stt_core::GAIN_MIN,
+                    stt_core::GAIN_MAX
+                )),
+            }
+            Nav::Stay
+        })
+        .help("1 = unchanged, 0.5 = half (-6 dB), 2 = double. Also accepts dB, e.g. -6 dB."),
+    ))
 }
 
 /// Listing devices can take a moment on PulseAudio, so it runs on a worker behind a spinner.

@@ -40,6 +40,8 @@ pub struct Mic {
     label: String,
     /// Why the configured mic was not used, e.g. "'USB Mic' not found; using the default device".
     note: Option<String>,
+    /// Software gain (`audio.gain`) applied to the level and the recorded samples.
+    gain: f32,
 }
 
 impl Default for Mic {
@@ -51,6 +53,7 @@ impl Default for Mic {
             start_when_open: false,
             label: "(system default)".into(),
             note: None,
+            gain: 1.0,
         }
     }
 }
@@ -144,7 +147,27 @@ impl Mic {
         if matches!(self.status, MicStatus::Recording { .. }) {
             self.status = MicStatus::Listening;
         }
-        audio
+        let g = self.gain;
+        audio.map(|mut a| {
+            if g != 1.0 {
+                a.iter_mut().for_each(|s| *s = (*s * g).clamp(-1.0, 1.0));
+            }
+            a
+        })
+    }
+
+    /// Set the software gain (`audio.gain`, clamped to the allowed range). Takes effect at once.
+    pub fn set_gain(&mut self, gain: f32) {
+        self.gain = if gain.is_finite() {
+            gain.clamp(stt_core::GAIN_MIN, stt_core::GAIN_MAX)
+        } else {
+            1.0
+        };
+    }
+
+    /// The software gain in use.
+    pub fn gain(&self) -> f32 {
+        self.gain
     }
 
     /// Stop and throw the audio away (Ctrl+C).
@@ -170,7 +193,9 @@ impl Mic {
 
     /// Live level `0.0..=1.0` (0 when closed).
     pub fn level(&self) -> f32 {
-        self.rec.as_ref().map_or(0.0, |r| r.level())
+        self.rec
+            .as_ref()
+            .map_or(0.0, |r| (r.level() * self.gain).min(1.0))
     }
 
     /// True while recording (or about to, once the device opens).
@@ -221,6 +246,24 @@ mod tests {
         assert!(m.is_recording());
         assert_eq!(m.stop().unwrap().len(), 160);
         assert_eq!(m.status(), &MicStatus::Listening);
+    }
+
+    #[test]
+    fn gain_scales_level_and_samples() {
+        let src = Arc::new(
+            FakeAudioSource::new()
+                .device("Mic A", false, vec![0.8, -0.2])
+                .level(0.4),
+        );
+        let mut m = Mic::default();
+        m.set_gain(0.5);
+        m.open(src, None);
+        settle(&mut m);
+        assert!((m.level() - 0.2).abs() < 1e-6);
+        m.start().unwrap();
+        assert_eq!(m.stop().unwrap(), vec![0.4, -0.1]);
+        m.set_gain(100.0);
+        assert_eq!(m.gain(), stt_core::GAIN_MAX);
     }
 
     #[test]
