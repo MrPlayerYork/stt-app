@@ -69,3 +69,11 @@ unsafe_op_in_unsafe_fn = "warn"
 [workspace.lints.clippy]
 dbg_macro = "warn"
 todo = "allow"
+
+# Release builds: optimise across all crates (LTO) in one unit, and strip debug symbols, for the
+# fastest and smallest binary. Builds take longer; `cargo build` (debug) is unaffected.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
