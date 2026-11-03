@@ -58,11 +58,29 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
 ## Cleanup before GitHub push / local archive (after the rewrite)
 - [ ] **Out-of-tree files** used during development (fine for now; gather or document them before archiving):
   shared models at `<data-drive>/stt-models` (shared across worktrees on purpose), the sccache
-  cache (`<data-drive>/.sccache`, set in `rust/.cargo/config.toml`), agent worktrees and `archive/*` branches.
+  cache (`<data-drive>/.sccache`, now set in the gitignored repo-root `.cargo/config.toml`). Agent worktrees and
+  merged branches were removed on 2026-11-02.
 - [ ] **App file locations:** paths plan from 2026-11-02 (shader cache + models next to the exe or set in config,
   portable config next to the exe, install to a chosen folder instead of `~/.cargo/bin`). Not started.
 - [ ] **Release binary rpath** points at `/home/linuxbrew/.linuxbrew/lib` (Vulkan build workaround). Fine on this
   machine; revisit if the binary is ever shared or moved.
+  A build from distro packages (README) has no rpath at all.
+
+## From the pre-push checks (2026-11-02)
+- [x] History rewritten: noreply author email, machine paths replaced by `<repo>` / `<data-drive>`, `reference/`
+  never in history. Backup bundle of the old history: `.backup/pre-rewrite-20261102.bundle` (gitignored).
+- [x] Clean build proven in a fresh Fedora distrobox using only the README's packages, with no Cargo config:
+  release build, `cargo test --workspace` (279 passed), and the CPU-only `--no-default-features` build.
+- [ ] **GPU inside distrobox `--nvidia`** (back burner): whisper's Vulkan loader finds "no Vulkan device". It also
+  segfaulted once in a release test run there. The NVIDIA ICD json, `libGLX_nvidia.so.0` and the `/dev/nvidia*` nodes
+  are all present in the container. On the host, the GPU tests pass in debug and release, so it looks like
+  container GPU passthrough on this Fedora Atomic host, not the app. Worth a look before telling people
+  "it runs in a container".
+- [ ] **Leftover to delete by hand:** `<data-drive>/stt-distrobox-home` (about 7.9 GB, the container's home with the
+  clean-build checkout). Claude's safety check blocks deleting top-level folders of a drive.
+- [ ] **Before pushing:** choose the repo name (the README's clone URL assumes `MrPlayerYork/stt-app`), and decide
+  whether to push the milestone tags (`live-header-working`, `reasoning-working`) or only `v1.0.0`.
+- [ ] **Binaries / GitHub release:** postponed.
 
 ## From Phase 3 (UI + binary, 2026-11-02)
 - [ ] **Cancel while processing:** Ctrl+C after Enter stops the copy, but the running transcription / LLM call
