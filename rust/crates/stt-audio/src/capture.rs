@@ -1,7 +1,7 @@
 //! One capture stream on its own thread. `cpal::Stream` is `!Send`, so the thread builds, owns and drops
 //! the stream; the rest of the program talks to it through shared state and a stop channel.
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -11,7 +11,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SizedSample};
 use stt_core::AudioError;
 
-use crate::convert::{rms, to_mono_16k};
+use crate::convert::to_mono_16k;
 use crate::source::preferred_hosts;
 
 /// Python `MAX_CHANNELS`: open at most this many channels, then average them.
@@ -30,6 +30,8 @@ pub(crate) enum Target {
 
 #[derive(Default)]
 struct Shared {
+    /// Whether the callback keeps samples (recording) or only measures the level (listening).
+    keep: AtomicBool,
     /// Mono samples at the device's native rate.
     samples: Mutex<Vec<f32>>,
     /// Most recent block RMS, as `f32` bits.
@@ -95,14 +97,15 @@ impl Pending {
 
 impl Capture {
     /// Open `target` and start capturing. `label` is used in error messages.
-    pub(crate) fn open(target: Target, label: &str) -> Result<Self, AudioError> {
-        Self::spawn(target, label)?.wait()
+    pub(crate) fn open(target: Target, label: &str, keep: bool) -> Result<Self, AudioError> {
+        Self::spawn(target, label, keep)?.wait()
     }
 
     /// Start opening on a new thread without waiting; call [`Pending::wait`] for the result. Lets several
     /// devices open in parallel so they start capturing at nearly the same moment.
-    pub(crate) fn spawn(target: Target, label: &str) -> Result<Pending, AudioError> {
+    pub(crate) fn spawn(target: Target, label: &str, keep: bool) -> Result<Pending, AudioError> {
         let shared = Arc::new(Shared::default());
+        shared.keep.store(keep, Ordering::Relaxed);
         let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
         let thread_shared = Arc::clone(&shared);
@@ -140,6 +143,29 @@ impl Capture {
         f32::from_bits(self.shared.level.load(Ordering::Relaxed))
     }
 
+    /// Begin keeping samples: drops anything buffered so the recording holds only audio after this call.
+    pub(crate) fn begin_keep(&self) {
+        let mut samples = lock(&self.shared.samples);
+        samples.clear();
+        self.shared.keep.store(true, Ordering::Relaxed);
+    }
+
+    /// Stop keeping samples and return what was kept as mono 16 kHz; the stream keeps running.
+    pub(crate) fn take(&self) -> Result<Vec<f32>, AudioError> {
+        let samples = {
+            let mut guard = lock(&self.shared.samples);
+            self.shared.keep.store(false, Ordering::Relaxed);
+            std::mem::take(&mut *guard)
+        };
+        if samples.is_empty() {
+            if let Some(err) = lock(&self.shared.error).take() {
+                return Err(AudioError::Stream(err));
+            }
+            return Ok(Vec::new());
+        }
+        Ok(to_mono_16k(&samples, 1, self.rate))
+    }
+
     /// Stop the stream, close the device and return everything captured as mono 16 kHz.
     pub(crate) fn finish(mut self) -> Result<Vec<f32>, AudioError> {
         self.shutdown();
@@ -172,6 +198,30 @@ impl Drop for Capture {
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Handle one callback block of mono samples: update the level, and buffer the samples only while keeping.
+fn ingest(shared: &Shared, mono: impl Iterator<Item = f32>) {
+    let mut sum_sq = 0.0f32;
+    let mut count = 0usize;
+    let mut samples = shared
+        .keep
+        .load(Ordering::Relaxed)
+        .then(|| lock(&shared.samples));
+    for m in mono {
+        sum_sq += m * m;
+        count += 1;
+        if let Some(buf) = samples.as_mut() {
+            buf.push(m);
+        }
+    }
+    drop(samples);
+    let level = if count == 0 {
+        0.0
+    } else {
+        (sum_sq / count as f32).sqrt().min(1.0)
+    };
+    shared.level.store(level.to_bits(), Ordering::Relaxed);
 }
 
 fn resolve_device(target: &Target) -> Result<cpal::Device, String> {
@@ -238,18 +288,16 @@ where
         .build_input_stream(
             *config,
             move |data: &[T], _| {
-                let mut samples = lock(&data_shared.samples);
-                let start = samples.len();
-                for frame in data.chunks_exact(channels) {
-                    let sum: f32 = frame
-                        .iter()
-                        .map(|&s| <f32 as FromSample<T>>::from_sample_(s))
-                        .sum();
-                    samples.push(sum / channels as f32);
-                }
-                let level = rms(&samples[start..]);
-                drop(samples);
-                data_shared.level.store(level.to_bits(), Ordering::Relaxed);
+                ingest(
+                    &data_shared,
+                    data.chunks_exact(channels).map(|frame| {
+                        let sum: f32 = frame
+                            .iter()
+                            .map(|&s| <f32 as FromSample<T>>::from_sample_(s))
+                            .sum();
+                        sum / channels as f32
+                    }),
+                );
             },
             move |e| {
                 let mut slot = lock(&err_shared.error);
@@ -260,4 +308,49 @@ where
             None,
         )
         .map_err(|e| format!("{e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fake_capture() -> Capture {
+        Capture {
+            shared: Arc::new(Shared::default()),
+            rate: 16_000,
+            stop_tx: None,
+            thread: None,
+        }
+    }
+
+    #[test]
+    fn listening_discards_samples_but_reports_level() {
+        let c = fake_capture();
+        ingest(&c.shared, std::iter::repeat_n(0.5, 1600));
+        assert!(lock(&c.shared.samples).is_empty());
+        assert!((c.level() - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn recording_holds_only_audio_after_begin_keep() {
+        let c = fake_capture();
+        ingest(&c.shared, std::iter::repeat_n(0.1, 800));
+        c.begin_keep();
+        ingest(&c.shared, std::iter::repeat_n(0.2, 16_000));
+        let out = c.take().unwrap();
+        assert_eq!(out.len(), 16_000);
+        assert!(out.iter().all(|&x| (x - 0.2).abs() < 1e-6));
+        // After take the capture is listening again: nothing accumulates.
+        ingest(&c.shared, std::iter::repeat_n(0.3, 800));
+        assert!(lock(&c.shared.samples).is_empty());
+    }
+
+    #[test]
+    fn begin_keep_clears_stale_buffer() {
+        let c = fake_capture();
+        c.shared.keep.store(true, Ordering::Relaxed);
+        ingest(&c.shared, std::iter::repeat_n(0.9, 500));
+        c.begin_keep();
+        assert!(lock(&c.shared.samples).is_empty());
+    }
 }

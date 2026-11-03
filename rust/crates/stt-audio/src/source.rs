@@ -109,6 +109,8 @@ impl AudioSource for CpalAudioSource {
             target,
             label,
             capture: None,
+            hot: false,
+            recording: false,
         }))
     }
 
@@ -124,20 +126,53 @@ struct CpalRecorder {
     target: Target,
     label: String,
     capture: Option<Capture>,
+    /// Stream was opened with `open` (hot mic): it stays open after `stop`.
+    hot: bool,
+    recording: bool,
 }
 
 impl Recorder for CpalRecorder {
-    fn start(&mut self) -> Result<(), AudioError> {
+    fn open(&mut self) -> Result<(), AudioError> {
         if self.capture.is_none() {
-            self.capture = Some(Capture::open(self.target.clone(), &self.label)?);
+            self.capture = Some(Capture::open(self.target.clone(), &self.label, false)?);
         }
+        self.hot = true;
+        Ok(())
+    }
+
+    fn close(&mut self) {
+        self.capture = None;
+        self.hot = false;
+        self.recording = false;
+    }
+
+    fn is_open(&self) -> bool {
+        self.capture.is_some()
+    }
+
+    fn start(&mut self) -> Result<(), AudioError> {
+        if self.recording {
+            return Ok(());
+        }
+        match &self.capture {
+            Some(c) => c.begin_keep(),
+            None => {
+                self.capture = Some(Capture::open(self.target.clone(), &self.label, true)?);
+            }
+        }
+        self.recording = true;
         Ok(())
     }
 
     fn stop(&mut self) -> Result<Vec<f32>, AudioError> {
-        match self.capture.take() {
-            Some(c) => c.finish(),
-            None => Ok(Vec::new()),
+        if !self.recording {
+            return Ok(Vec::new());
+        }
+        self.recording = false;
+        if self.hot {
+            self.capture.as_ref().map_or(Ok(Vec::new()), Capture::take)
+        } else {
+            self.capture.take().map_or(Ok(Vec::new()), Capture::finish)
         }
     }
 
@@ -146,7 +181,7 @@ impl Recorder for CpalRecorder {
     }
 
     fn is_recording(&self) -> bool {
-        self.capture.is_some()
+        self.recording
     }
 }
 
@@ -164,7 +199,7 @@ impl MultiRecorder for CpalMultiRecorder {
             if self.running.contains_key(&d.id) {
                 continue;
             }
-            match Capture::spawn(Target::Id(d.id.0.clone()), &d.name) {
+            match Capture::spawn(Target::Id(d.id.0.clone()), &d.name, true) {
                 Ok(p) => pending.push((d.id.clone(), p)),
                 Err(e) => {
                     errors.insert(d.id.clone(), e.to_string());
