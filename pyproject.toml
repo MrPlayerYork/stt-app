@@ -1,6 +1,6 @@
 [project]
 name = "stt-app"
-version = "1.0.0"
+version = "1.0.1"
 description = "Push-to-record speech-to-text terminal app (Python reference implementation)"
 readme = "README.md"
 authors = [

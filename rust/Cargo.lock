@@ -2885,7 +2885,7 @@ dependencies = [
 
 [[package]]
 name = "stt"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "stt-audio",
@@ -2900,7 +2900,7 @@ dependencies = [
 
 [[package]]
 name = "stt-audio"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "cpal",
  "stt-core",
@@ -2909,21 +2909,21 @@ dependencies = [
 
 [[package]]
 name = "stt-calibrate"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "stt-core",
 ]
 
 [[package]]
 name = "stt-clipboard"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "stt-core",
 ]
 
 [[package]]
 name = "stt-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "dirs",
  "indexmap",
@@ -2937,7 +2937,7 @@ dependencies = [
 
 [[package]]
 name = "stt-download"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -2948,7 +2948,7 @@ dependencies = [
 
 [[package]]
 name = "stt-llm"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -2959,7 +2959,7 @@ dependencies = [
 
 [[package]]
 name = "stt-tui"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "chrono",
  "crossterm",
@@ -2971,7 +2971,7 @@ dependencies = [
 
 [[package]]
 name = "stt-whisper"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "hound",
  "stt-core",
