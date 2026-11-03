@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use stt_core::config::{WhisperConfig, WhisperDevice, WhisperQuant};
+use stt_core::config::{WhisperConfig, WhisperDecoding, WhisperDevice, WhisperQuant};
 use stt_core::transcribe::Transcriber;
 use stt_whisper::engine::WhisperRsBackend;
 use stt_whisper::transcriber::{Settings, SharedTranscriber, WhisperTranscriber, default_fetcher};
@@ -31,6 +31,11 @@ fn main() {
             WhisperDevice::Cpu
         } else {
             WhisperDevice::Gpu
+        },
+        decoding: if beam == 1 {
+            WhisperDecoding::Greedy
+        } else {
+            WhisperDecoding::Beam
         },
         ..WhisperConfig::default()
     };

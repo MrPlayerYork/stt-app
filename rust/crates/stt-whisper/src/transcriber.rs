@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use stt_core::config::{WhisperConfig, WhisperDevice, WhisperQuant};
+use stt_core::config::{WhisperConfig, WhisperDecoding, WhisperDevice, WhisperQuant};
 use stt_core::error::{DownloadError, TranscribeError};
 use stt_core::progress::{DownloadProgressFn, LoadEvent, LoadProgressFn};
 use stt_core::transcribe::{ComputeDevice, LoadInfo, Transcriber};
@@ -28,13 +28,15 @@ pub trait Backend: Send + Sync + 'static {
     fn wants_vad(&self) -> bool;
 
     /// Load the model onto `device`. `vad` is the VAD model path if it is available. Must fail (not
-    /// silently use another device) when the GPU is requested but unusable. Does not warm up.
+    /// silently use another device) when the GPU is requested but unusable. `decoding` is
+    /// `whisper.decoding` (beam search or greedy). Does not warm up.
     fn open(
         &self,
         path: &Path,
         vad: Option<&Path>,
         device: DeviceKind,
         language: Option<&str>,
+        decoding: WhisperDecoding,
     ) -> Result<Box<dyn Session>, String>;
 }
 
@@ -81,6 +83,8 @@ pub struct Settings {
     pub device: WhisperDevice,
     /// Language code, `None` = auto.
     pub language: Option<String>,
+    /// Beam search or greedy decoding (`whisper.decoding`).
+    pub decoding: WhisperDecoding,
     /// Where model files live.
     pub models_dir: PathBuf,
     /// Parallel download connections.
@@ -97,6 +101,7 @@ impl Settings {
             quant: cfg.quantization,
             device: cfg.device,
             language: cfg.language.clone(),
+            decoding: cfg.decoding,
             models_dir,
             connections: cfg.download_connections.max(1),
             token,
@@ -249,6 +254,7 @@ impl<B: Backend> WhisperTranscriber<B> {
                     vad.as_deref(),
                     *kind,
                     self.settings.language.as_deref(),
+                    self.settings.decoding,
                 )
                 .and_then(|mut s| s.warm_up().map(|()| s));
             match result {
@@ -421,6 +427,7 @@ mod tests {
             _: Option<&Path>,
             device: DeviceKind,
             _: Option<&str>,
+            _: WhisperDecoding,
         ) -> Result<Box<dyn Session>, String> {
             self.opens.fetch_add(1, Ordering::SeqCst);
             std::thread::sleep(Duration::from_millis(self.delay_ms));
@@ -461,6 +468,7 @@ mod tests {
             quant: WhisperQuant::Q5_0,
             device,
             language: Some("en".into()),
+            decoding: WhisperDecoding::Beam,
             models_dir: dir.clone(),
             connections: 2,
             token: None,

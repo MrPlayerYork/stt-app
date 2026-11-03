@@ -7,6 +7,7 @@
 
 use std::path::Path;
 
+use stt_core::config::WhisperDecoding;
 use stt_core::transcribe::ComputeDevice;
 use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
@@ -25,7 +26,7 @@ const MIN_SAMPLES: usize = 16_000 + 1_600;
 /// whisper-rs engine settings.
 #[derive(Debug, Clone)]
 pub struct WhisperRsBackend {
-    /// Beams; `1` selects greedy decoding.
+    /// Beams used when `whisper.decoding` is beam; `1` makes that greedy too. Greedy decoding always uses 1.
     pub beam_size: i32,
     /// Threads for CPU inference; `0` = pick automatically (see [`default_cpu_threads`]).
     pub cpu_threads: i32,
@@ -57,6 +58,7 @@ impl Backend for WhisperRsBackend {
         vad: Option<&Path>,
         device: DeviceKind,
         language: Option<&str>,
+        decoding: WhisperDecoding,
     ) -> Result<Box<dyn Session>, String> {
         // ggml/whisper.cpp print to stderr by default, which would corrupt the inline TUI. With neither
         // the `log` nor the `tracing` backend enabled this discards everything.
@@ -86,7 +88,10 @@ impl Backend for WhisperRsBackend {
             compute,
             vad: vad.map(|p| p.to_string_lossy().into_owned()),
             language: language.map(str::to_owned),
-            beam_size: self.beam_size,
+            beam_size: match decoding {
+                WhisperDecoding::Beam => self.beam_size,
+                WhisperDecoding::Greedy => 1,
+            },
             threads,
         }))
     }
