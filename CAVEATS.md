@@ -50,6 +50,8 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
   warm (or pre-open when the main screen shows). Check in Phase 4 testing.
   **Decided 2026-11-02:** hot mic is OK: open the stream at startup and keep it warm, but the UI must always show
   that the mic is open, and show clearly (distinct from that) when audio is actually being recorded.
+  **Done (P3-5):** start on a real mic took 2.12 s without the hot mic, 4-5 µs with it (open itself 2.04 s, once).
+  Confirm in Phase 4 that the first word is no longer cut off.
 - [ ] **Unknown download size (stt-download):** now streams without resume support instead of failing like Python.
   Probably fine (HF always sends a size).
 
@@ -61,3 +63,14 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
   portable config next to the exe, install to a chosen folder instead of `~/.cargo/bin`). Not started.
 - [ ] **Release binary rpath** points at `/home/linuxbrew/.linuxbrew/lib` (Vulkan build workaround). Fine on this
   machine; revisit if the binary is ever shared or moved.
+
+## From Phase 3 (UI + binary, 2026-11-02)
+- [ ] **Cancel while processing:** Ctrl+C after Enter stops the copy, but the running transcription / LLM call
+  finishes in the background (result dropped). Fine unless a long LLM call ties up the local server.
+- [ ] **Default mic name:** with no mic chosen the header says "(system default)" rather than the real device name.
+- [ ] **Config salvage:** a multi-line value (e.g. a long custom prompt) inside a section that fails to parse can't
+  be rescued; single-line values are.
+- [ ] **Python-written config with LLM on but no model/base URL** gets flagged, backed up and rewritten with the LLM
+  off (the Python app then sees it off too). Keep, or only warn?
+- [ ] **LLM settings key:** "Unload when quitting" is on `u` (digits run out after 9).
+- [ ] **Nothing has been run in a real terminal yet** (tests render at 80x24). Phase 4: Konsole, real mics, LLMs.

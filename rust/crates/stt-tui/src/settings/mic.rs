@@ -6,6 +6,7 @@ use crate::screen::Nav;
 use crate::widgets::PickList;
 
 use super::commit;
+use super::popups::Busy;
 use super::section::{Row, Section};
 
 pub(super) struct MicSection;
@@ -63,8 +64,21 @@ impl Section for MicSection {
     }
 }
 
+/// Listing devices can take a moment on PulseAudio, so it runs on a worker behind a spinner.
 fn pick_device(app: &mut App) -> Nav {
-    let devs = match app.services.audio.list_input_devices() {
+    let audio = app.services.audio.clone();
+    Nav::Push(Box::new(Busy::new(
+        "Listing microphones…",
+        move || audio.list_input_devices(),
+        show_devices,
+    )))
+}
+
+fn show_devices(
+    app: &mut App,
+    listed: Result<Vec<stt_core::InputDevice>, stt_core::AudioError>,
+) -> Nav {
+    let devs = match listed {
         Ok(d) => d,
         Err(e) => {
             app.flash_error(format!("Could not list devices: {e}"));

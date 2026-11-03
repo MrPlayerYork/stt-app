@@ -413,7 +413,7 @@ fn mic_pick_sets_device_and_reopens_mic() {
     typ(&mut ui, &mut app, "1");
     assert!(screen(&mut ui, &app).contains("listening"));
     typ(&mut ui, &mut app, "3");
-    assert!(screen(&mut ui, &app).contains("Test Mic"));
+    tick_until_text(&mut ui, &mut app, "Test Mic");
     typ(&mut ui, &mut app, "1");
     assert_eq!(app.cfg.audio.device_name.as_deref(), Some("Test Mic"));
     assert_eq!(app.mic.label(), "Test Mic");
