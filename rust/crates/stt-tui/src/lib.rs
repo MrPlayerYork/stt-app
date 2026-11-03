@@ -27,6 +27,7 @@ pub mod config_notice;
 pub mod first_run;
 pub mod history_tab;
 pub mod main_tab;
+pub mod reasoning_view;
 pub mod record;
 pub mod settings;
 
