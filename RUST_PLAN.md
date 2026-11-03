@@ -100,7 +100,11 @@ Model tiers: **H** = haiku, **S** = sonnet, **O** = opus. "Heavy" = needs the `h
 | P3-1 | App state + main screen (inline viewport, live header, single-key menu) + record flow + history | S |
 | P3-2 | Settings screens (mic, whisper, LLM incl. reasoning/word choice/TTL, custom prompts) + masked secret input | S |
 | P3-3 | Calibration screens + first-run + `stt` binary wiring | S |
-The orchestrator defines the `App` state struct and screen module boundaries in the P3 prompts before launch.
+| P3-4 | `stt-core` config recovery (`recover.rs`: keep valid values, reset bad ones, backup, report) | S |
+| P3-5 | Hot mic in `stt-audio` (`Recorder::open/close`), `whisper.decoding` (beam/greedy) wired into `stt-whisper` | S, heavy |
+
+The orchestrator wrote the shared `stt-tui` framework first (commit b961e93: `App`, `Screen`/`Nav`, runner, theme,
+widgets, hot-mic `Mic`, `ModelLoader`, testkit, one stub per agent module) plus the stt-core contract additions.
 
 ### Phase 4 — Integration + parity (orchestrator, 1–2 agents)
 1. Merge Phase 3 branches into `rust-rewrite`; `cargo test --workspace`; release build (heavy slot).
