@@ -36,3 +36,7 @@ dev = [
 
 [tool.uv]
 cache-dir = "<data-drive>/.uv-cache"
+
+[tool.pytest.ini_options]
+# Only the Python tests: rust/vk-sdk symlinks into the Vulkan SDK, which ships Python files of its own.
+testpaths = ["tests"]
