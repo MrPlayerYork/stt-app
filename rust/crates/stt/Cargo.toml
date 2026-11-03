@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 stt-core.workspace = true
 stt-audio.workspace = true
-stt-whisper.workspace = true
+stt-whisper = { workspace = true, features = ["whisper"] }
 stt-download.workspace = true
 stt-llm.workspace = true
 stt-clipboard.workspace = true
