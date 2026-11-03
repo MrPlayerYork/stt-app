@@ -16,7 +16,7 @@ Sub-agent rules, resource limits and the shared board are in **[AGENTS.md](AGENT
 | HTTP | `ureq` (blocking) + `serde_json` | No async runtime: smaller build, simpler code. Threads + channels where concurrency is needed. |
 | LLMs | Raw HTTPS to OpenAI / OpenAI-compatible, Anthropic, Google | API-only (user decision). Same features: model list, reasoning levels + capture, TTL, unload. |
 | Audio | `cpal` (ALSA/PipeWire) | Device list, multi-device simultaneous capture for calibration. Resample to 16 kHz mono f32. |
-| UI | `ratatui` + `crossterm` with an **inline viewport** (not full-screen) | Matches the current Rich feel; live redraw replaces the "Live only when busy" hack. |
+| UI | `ratatui` + `crossterm`, **full screen with tabs** (Main / History / Settings) in the live-panel look | User choice 2026-11-02 (was: inline viewport). Mockups: [UI_MOCKUPS.txt](UI_MOCKUPS.txt), section D. On quit, print the session's dictations to the normal terminal so they land in scrollback. |
 | Clipboard | `wl-copy` → `xclip` → `xsel` subprocess, same as Python | `wl-copy` forks and keeps serving after exit, which libraries get wrong on Wayland. |
 | Secrets | `keyring` crate, service `stt-app`, username = provider | **Existing keys carry over** from the Python app. |
 | Config | Same file `~/.config/stt-app/config.toml`, same schema (`serde` + `toml`) | **Existing settings carry over.** New Rust-only keys are additive with defaults. |

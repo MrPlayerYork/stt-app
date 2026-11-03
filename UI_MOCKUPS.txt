@@ -1,0 +1,275 @@
+STT App (Rust) - layout mockups
+================================
+Dummy data throughout. Widths assume an 80-column terminal. Colours are noted in (brackets)
+because a text file can't show them.
+
+Three options:
+  A. Live panel       (recommended)  - one inline panel that updates in place
+  B. Python-style                    - close copy of the current Python app
+  C. Full-screen app                 - takes over the whole terminal, with tabs
+
+"Inline" (A and B) means the app draws in the bottom part of your terminal, under whatever
+was there before, and your scrollback stays usable. "Full-screen" (C) hides the scrollback
+while the app is open, like htop or lazygit.
+
+
+################################################################################
+#  A. LIVE PANEL  (recommended)
+################################################################################
+
+Idea: one panel that never "re-prints"; it redraws in place. The mic meter is always live,
+which doubles as the "the mic is hot" indicator. The panel changes colour and title when
+it is actually recording. Finished dictations also print a short record into the normal
+terminal scrollback above the panel, so you can scroll up to old results.
+
+--- A1. Main screen, idle (mic hot, model ready) ---------------------------------
+
+  (scrollback above: earlier results, printed as plain lines)
+  14:02  Prompt: deramble   Let's meet on Wednesday at 3 pm.
+  14:05  Raw                buy milk, eggs and the good bread
+
+╭─ Speech to Text ─────────────────────────────────────────────────────────────╮
+│ Mic      ◉ Blue Snowball Analog Stereo     ▮▮▮▯▯▯▯▯▯▯▯▯▯▯▯▯▯▯▯▯  listening   │
+│ Whisper  ● large-v3-turbo · gpu (Vulkan) · q5_0 · beam 5                     │
+│ Mode     Prompt: deramble · reasoning: low · word choice                     │
+├─ Last result ─────────────────────────────────────── copied to clipboard ✓ ──┤
+│ Let's meet on Wednesday at 3 pm.                                             │
+│ raw: um so i think we should uh meet on tuesday no wait wednesday at three…  │
+│ Reasoning: 212 tokens · [v] view                                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ [Enter/r] record  [m] mode  [p] preset  [v] reasoning  [h] history  [s] settings  [q] quit
+
+  Notes:
+  - "◉ ... listening" (dim green) = the mic stream is open (hot) but NOTHING is kept.
+    The meter moves when you talk so you can see it's the right mic.
+  - The Whisper dot: ● green = ready, ● yellow = loading/downloading, ● red = error.
+  - Keys that don't apply right now are hidden ([p] only in Prompt mode, [v] only when
+    there is reasoning to view), same as the Python app.
+
+--- A2. Main screen, starting up (model loading, shader warm-up) -----------------
+
+╭─ Speech to Text ─────────────────────────────────────────────────────────────╮
+│ Mic      ◌ Blue Snowball Analog Stereo     opening…                          │
+│ Whisper  ● downloading ggml-large-v3-turbo-q5_0.bin  ███████░░░░░  58%  42 MB/s│
+│ Mode     Raw                                                                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ [Enter/r] record  [m] mode  [h] history  [s] settings  [q] quit
+
+  ...a few seconds later, first run after a build or driver update:
+
+│ Whisper  ● warming up the GPU (one-time shader compile, ~20 s)…  ⠼  12 s     │
+
+  You can press record while it's loading: the recording is kept, and it's transcribed
+  as soon as the model is ready (the Python app did the same, with "Waiting for the
+  Whisper model...").
+
+--- A3. Recording -----------------------------------------------------------------
+
+╭─ ● REC  0:04.2 ──────────────────────────────────────────────────── (red) ───╮
+│ Mic      ● Blue Snowball Analog Stereo     ▮▮▮▮▮▮▮▮▮▮▮▯▯▯▯▯▯▯▯▯  RECORDING   │
+│                                                                              │
+│          Enter  stop and transcribe          Ctrl+C  cancel (throws it away) │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+  - Border, title and the mic dot all turn red, and the word changes from "listening"
+    to "RECORDING". Two different states, never confused.
+
+--- A4. After Enter: working ------------------------------------------------------
+
+╭─ Speech to Text ─────────────────────────────────────────────────────────────╮
+│ ...header as A1...                                                           │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ ✓ Recorded 4.2 s                                                             │
+│ ✓ Transcribed (0.3 s)                                                        │
+│ ⠼ Processing with the LLM (qwen3-8b)…                                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  Then it goes back to A1 with the new "Last result" and "copied to clipboard ✓".
+  If the LLM fails:  "✗ LLM error: connection refused · copied the raw text instead"
+
+--- A5. History (h) ---------------------------------------------------------------
+
+╭─ History (newest first) ─────────────────────────────────────────────────────╮
+│ › 1  14:05  Raw              buy milk, eggs and the good bread               │
+│   2  14:02  Prompt: deramble Let's meet on Wednesday at 3 pm.                │
+│   3  13:51  Cleanup          The build passed on the second try, so I'm m…   │
+├─ Preview ────────────────────────────────────────────────────────────────────┤
+│ buy milk, eggs and the good bread                                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ [↑↓] move  [Enter/c] copy  [1-9] copy that number  [v] reasoning  [Esc] back
+
+--- A6. Settings (s) --------------------------------------------------------------
+
+╭─ Settings ───────────────────────────────────────────────────────────────────╮
+│   Microphone     Blue Snowball Analog Stereo                                 │
+│ › Whisper        large-v3-turbo · gpu · q5_0 · beam 5 · en                   │
+│   LLM            on · LM Studio · qwen3-8b · reasoning low                   │
+│   Files          models, config, shader cache locations                      │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Model, device, quality/speed (beam 5 or greedy), language, downloads.        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ [↑↓] move  [Enter] open  [1-4] jump  [Esc] back
+
+  The bottom box always explains the selected line.
+
+--- A7. Settings > Whisper (Enter on "Whisper") ------------------------------------
+
+╭─ Settings › Whisper ─────────────────────────────────────────────────────────╮
+│ 1 Model            large-v3-turbo                                            │
+│ 2 Device           auto (GPU, falls back to CPU)                             │
+│ 3 Quality          q5_0                                                      │
+│ › Decoding         beam 5 (accurate)          ◂ greedy (fast) ▸              │
+│ 5 Language         en                                                        │
+│ 6 Models folder    <data-drive>/stt-models                  │
+│ 7 Connections      8                                                         │
+│ 8 HF token         set                                                       │
+│ 9 Download / verify the current model now                                    │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Beam 5 tries several word sequences and keeps the best (about 0.34 s for a   │
+│ 20 s clip). Greedy takes the first guess (about 0.23 s), a bit less accurate.│
+╰──────────────────────────────────────────────────────────────────────────────╯
+ [↑↓] move  [←→] change  [Enter] edit  [1-9] jump  [Esc] back
+
+  - Choices with a few fixed values (device, quality, decoding, reasoning) change in
+    place with ←→. No sub-menu needed.
+  - Free text (language, folder, URL) edits in place on the line, Enter saves, Esc undoes.
+  - Secrets (API key, HF token) open a masked line: ●●●●●●●●  (32 characters)
+
+--- A8. Settings > LLM ------------------------------------------------------------
+
+╭─ Settings › LLM ─────────────────────────────────────────────────────────────╮
+│ 1 Enabled               yes                                                  │
+│ 2 Provider              Local / OpenAI-compatible                            │
+│ 3 Server                LM Studio (http://localhost:1234/v1)                 │
+│ 4 API key               not set (optional for local servers)                 │
+│ 5 Model                 qwen3-8b                                [list ↵]     │
+│ 6 Reasoning             ◂ low ▸                                              │
+│ 7 Word choice (Prompt)  on                                                   │
+│ 8 Idle unload (TTL)     10m                                                  │
+│ 9 Unload when quitting  yes                                                  │
+│ c Custom prompts        2 defined                                            │
+│ t Test connection                                                            │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ TTL: LM Studio applies it only to models it loads on demand (JIT). 0 =       │
+│ server default.                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+--- A9. Startup warning (bad config value, recovered) -----------------------------
+
+╭─ Config problems ─────────────────────────────────────────── (yellow) ───────╮
+│ ~/.config/stt-app/config.toml had problems. Backup: config.toml.bak-20261102 │
+│                                                                              │
+│ Kept (12):   model, device, language, provider, base_url, model, ...         │
+│ Reset (2):   llm.reasoning "hgh" → default                                   │
+│              whisper.device "vulkn" → auto                                   │
+│ Needs a value:  llm.model is empty but LLM is enabled → LLM turned off       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ [Enter] continue  [s] open settings
+
+
+################################################################################
+#  B. PYTHON-STYLE
+################################################################################
+
+Same look as today. Each screen prints below the last one, so the terminal fills up
+with old menus (the Python app cleared the screen between rounds to hide that).
+
+╭─ Speech to Text ──────────────────────────────────╮
+│ Microphone  Blue Snowball Analog Stereo           │
+│ Whisper     large-v3-turbo on gpu (Vulkan) q5_0   │
+│ Mode        Prompt: deramble · reasoning: low     │
+╰───────────────────────────────────────────────────╯
+Last result:
+╭─ Raw transcript ──────────────────────────────────╮
+│ um so i think we should uh meet on tuesday no     │
+│ wait wednesday at three pm                        │
+╰───────────────────────────────────────────────────╯
+╭─ Processed (Prompt: deramble) ────────────────────╮
+│ Let's meet on Wednesday at 3 pm.                  │
+╰───────────────────────────────────────────────────╯
+Reasoning: 212 tokens · [v] view
+[r]ecord  [m]ode  [p]reset  [v] reasoning  [h]istory  [s]ettings  [q]uit
+
+  Settings:
+╭─ Settings ─╮
+│ 1  Microphone
+│ 2  Whisper
+│ 3  LLM
+│ b  Back
+╰────────────╯
+Settings: 2
+╭─ Whisper settings ──────────────────────────────────────╮
+│ 1  Model / device / language   large-v3-turbo, auto, en │
+│ 2  Models folder               <data-drive>/stt-models│
+│ ...                                                     │
+╰─────────────────────────────────────────────────────────╯
+Whisper: 1
+  1 large-v3
+  2 large-v3-turbo (current)
+  ...
+Model (number, Enter to cancel): _
+
+  For the hot mic we'd add a "listening" level meter to the header; it would have to
+  redraw in place, which this layout only does in a few spots.
+
+
+################################################################################
+#  C. FULL-SCREEN APP
+################################################################################
+
+┌ Main ┬ History ┬ Settings ┐─────────────────────────────────────────────────────┐
+│                                                                                │
+│  Mic      ◉ Blue Snowball Analog Stereo   ▮▮▮▯▯▯▯▯▯▯▯▯▯▯▯▯  listening           │
+│  Whisper  ● large-v3-turbo · gpu (Vulkan) · q5_0 · beam 5                      │
+│  Mode     Prompt: deramble · reasoning: low                                    │
+│                                                                                │
+│ ┌ Last result ─────────────────────────────────────── copied to clipboard ✓ ┐  │
+│ │ Let's meet on Wednesday at 3 pm.                                          │  │
+│ │ raw: um so i think we should uh meet on tuesday no wait wednesday at…     │  │
+│ └───────────────────────────────────────────────────────────────────────────┘  │
+│ ┌ Recent ───────────────────────────────────────────────────────────────────┐  │
+│ │ 1  14:05  Raw      buy milk, eggs and the good bread                      │  │
+│ │ 2  14:02  Prompt   Let's meet on Wednesday at 3 pm.                       │  │
+│ │ 3  13:51  Cleanup  The build passed on the second try, so I'm merging…    │  │
+│ └───────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                │
+│                                                                                │
+└ [Enter] record · [m] mode · [Tab] switch tab · [q] quit ───────────────────────┘
+
+  Uses the whole window. Most room, but your terminal history is hidden while it's
+  open, and it no longer feels like a small tool living in your terminal.
+
+
+################################################################################
+#  D. CHOSEN (2026-11-02): FULL-SCREEN APP (C) WITH THE LIVE-PANEL LOOK (A)
+################################################################################
+
+Full screen (alternate screen, like htop), tabs along the top, and A's rounded panels,
+live mic meter, coloured status dots and help box inside. Every A screen (A1-A9) keeps
+its content and keys; it just lives in a tab instead of an inline panel.
+
+╭─ Main ─┬─ History ─┬─ Settings ─╮──────────────────────────────── stt 0.1.0 ─╮
+│                                                                              │
+│  Mic      ◉ Blue Snowball Analog Stereo     ▮▮▮▯▯▯▯▯▯▯▯▯▯▯▯▯▯▯▯▯  listening  │
+│  Whisper  ● large-v3-turbo · gpu (Vulkan) · q5_0 · beam 5                    │
+│  Mode     Prompt: deramble · reasoning: low · word choice                    │
+│                                                                              │
+│ ╭─ Last result ──────────────────────────────────── copied to clipboard ✓ ─╮ │
+│ │ Let's meet on Wednesday at 3 pm.                                         │ │
+│ │ raw: um so i think we should uh meet on tuesday no wait wednesday at…    │ │
+│ │ Reasoning: 212 tokens · [v] view                                         │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+│ ╭─ Recent ─────────────────────────────────────────────────────────────────╮ │
+│ │ 1  14:05  Raw              buy milk, eggs and the good bread             │ │
+│ │ 2  14:02  Prompt: deramble Let's meet on Wednesday at 3 pm.              │ │
+│ │ 3  13:51  Cleanup          The build passed on the second try, so I'm…   │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+│                                                                              │
+╰─ [Enter] record  [m] mode  [p] preset  [v] reasoning  [Tab] switch  [q] quit ╯
+
+Recording: the whole outer border, title and mic dot turn red ("● REC 0:04.2" in the
+top border), the Last-result box is replaced by the big meter + "Enter stop · Ctrl+C
+cancel". Settings tab = A6/A7/A8 inside the frame; History tab = A5.
+
+Scrollback: full screen hides it while the app runs, so on quit the app prints this
+session's dictations (time, mode, final text) to the normal terminal before "Bye.",
+which puts them in the scrollback like the inline layout would have.

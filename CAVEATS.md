@@ -8,10 +8,11 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
   20.5 s (P2-8): a one-time Vulkan shader compile. The next fresh process took 0.64 s, so the shader cache
   persists across runs. Untested: after a reboot or a driver update. stt-whisper already warms up at load; Phase 3
   still needs a visible "warming up…" state for the slow case.
-- [ ] **Speed with matched settings (P2-8):** stt-whisper now uses beam 5 + Silero VAD like the Python app. Warm
+- [x] **Speed with matched settings (P2-8):** stt-whisper now uses beam 5 + Silero VAD like the Python app. Warm
   transcribe of the 20 s clip, q5_0 GPU: **beam 5 = 0.34 s** (greedy 0.23 s) vs faster-whisper 0.245 s. So about
   1.4x slower on transcription with equal settings (well inside the gate's 2x), but loads about 4x faster. Decide
   whether to keep beam 5 or offer greedy as a "fast" option.
+  **Decided 2026-11-02:** default beam 5; Whisper settings offer greedy as a "fast" option (P3-2).
 - [ ] **CPU fallback:** beam 5, 20 s clip: 4 threads 23.7 s, 8 threads about 13.8 s, 12 threads 13.6 s (machine was busy
   with other agents, so noisy). Default is now 8 threads, about 0.7x real time. Fine as a fallback; slow as a main path.
 - [ ] **VAD model:** Silero VAD (`ggml-silero-v5.1.2.bin`, 885 KB from `ggml-org/whisper-vad`) is fetched next to
@@ -30,8 +31,10 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
 - [x] **Microphone names (P2-5):** solved 2026-11-01. cpal's PulseAudio host (served by pipewire-pulse) reports the
   same names the Python app saved (e.g. "Blue Snowball Analog Stereo"). `stt_audio::match_saved_device` matches exact →
   normalised → substring; no match → re-calibrate. Details: `scratch/device-naming.md`. Confirm with your real saved mic in Phase 4.
-- [ ] **Config leniency:** unknown `device` / `provider` / `mode` / `reasoning` values now silently fall back to the
+- [x] **Config leniency:** unknown `device` / `provider` / `mode` / `reasoning` values now silently fall back to the
   default (Python failed instead). Fine, or should the app warn?
+  **Decided 2026-11-02:** warn on startup. Also try recovering a partial config: keep every valid value, reset the
+  rest, and show what was recovered and what still needs a value (back up the original file first).
 - [ ] `whisper.device = "cuda"` is still what gets written (so the Python app can read the file); `"gpu"`/`"vulkan"`
   are accepted on read. Revisit once the Python app is retired.
 
@@ -42,8 +45,19 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
 - [ ] **LLM error wording (stt-llm):** `LlmError` has no free-text variant, so some messages read differently from
   Python (e.g. "HTTP 401: Authentication failed…" instead of Python's text; timeouts and connection failures use
   generic variants). Cosmetic. Fix if wanted: add `LlmError::Other(String)` and use the Python strings.
-- [ ] **Record start latency (stt-audio):** opening a PulseAudio stream takes about 1-2 s per device, so the first
+- [x] **Record start latency (stt-audio):** opening a PulseAudio stream takes about 1-2 s per device, so the first
   push-to-record could miss your first word. Likely fix in Phase 3: open the mic stream once at startup and keep it
   warm (or pre-open when the main screen shows). Check in Phase 4 testing.
+  **Decided 2026-11-02:** hot mic is OK: open the stream at startup and keep it warm, but the UI must always show
+  that the mic is open, and show clearly (distinct from that) when audio is actually being recorded.
 - [ ] **Unknown download size (stt-download):** now streams without resume support instead of failing like Python.
   Probably fine (HF always sends a size).
+
+## Cleanup before GitHub push / local archive (after the rewrite)
+- [ ] **Out-of-tree files** used during development (fine for now; gather or document them before archiving):
+  shared models at `<data-drive>/stt-models` (shared across worktrees on purpose), the sccache
+  cache (`<data-drive>/.sccache`, set in `rust/.cargo/config.toml`), agent worktrees and `archive/*` branches.
+- [ ] **App file locations:** paths plan from 2026-11-02 (shader cache + models next to the exe or set in config,
+  portable config next to the exe, install to a chosen folder instead of `~/.cargo/bin`). Not started.
+- [ ] **Release binary rpath** points at `/home/linuxbrew/.linuxbrew/lib` (Vulkan build workaround). Fine on this
+  machine; revisit if the binary is ever shared or moved.
