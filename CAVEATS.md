@@ -71,16 +71,17 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
   never in history. Backup bundle of the old history: `.backup/pre-rewrite-20261102.bundle` (gitignored).
 - [x] Clean build proven in a fresh Fedora distrobox using only the README's packages, with no Cargo config:
   release build, `cargo test --workspace` (279 passed), and the CPU-only `--no-default-features` build.
-- [ ] **GPU inside distrobox `--nvidia`** (back burner): whisper's Vulkan loader finds "no Vulkan device". It also
-  segfaulted once in a release test run there. The NVIDIA ICD json, `libGLX_nvidia.so.0` and the `/dev/nvidia*` nodes
-  are all present in the container. On the host, the GPU tests pass in debug and release, so it looks like
-  container GPU passthrough on this Fedora Atomic host, not the app. Worth a look before telling people
-  "it runs in a container".
+- [ ] **Parallel GPU loads can segfault** (found 2026-11-03): the GPU tests crash when they load models in
+  parallel threads, with both the brew build and the portable Ubuntu build (`--test-threads=1` always passes, and
+  the GPU is used). This is most likely what the earlier "GPU inside distrobox `--nvidia`" failure was. The app can
+  hit it: `ModelLoader::start` starts a new load while an old one may still be running (a Whisper setting
+  changed mid-load), and `load_lock` is per transcriber. Fix: a process-wide load lock in stt-whisper. Listed as
+  a known issue in the v1.0.0 release notes.
 - [ ] **Leftover to delete by hand:** `<data-drive>/stt-distrobox-home` (about 7.9 GB, the container's home with the
   clean-build checkout). Claude's safety check blocks deleting top-level folders of a drive.
-- [ ] **Before pushing:** choose the repo name (the README's clone URL assumes `MrPlayerYork/stt-app`), and decide
-  whether to push the milestone tags (`live-header-working`, `reasoning-working`) or only `v1.0.0`.
-- [ ] **Binaries / GitHub release:** postponed.
+- [x] **Pushed 2026-11-03:** https://github.com/MrPlayerYork/stt-app (public; master and all 3 tags).
+- [x] **v1.0.0 release:** `stt-1.0.0-linux-x86_64.tar.xz` (+ sha256), built in an Ubuntu 24.04 distrobox with
+  the LTO release profile: system libs only, no rpath, needs glibc 2.39+. Its GPU tests passed on this host.
 
 ## From Phase 3 (UI + binary, 2026-11-02)
 - [ ] **Cancel while processing:** Ctrl+C after Enter stops the copy, but the running transcription / LLM call
