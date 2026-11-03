@@ -83,6 +83,11 @@ $B wait-load                                # block until load < 12 and >= 4 GB 
 
 ### Building whisper.cpp with Vulkan (`stt-whisper`, the `stt` binary, `scratch/whisper-spike`)
 Proven in P1-b (`scratch/whisper-spike/RESULTS.md`). Without these fixes the build fails or links wrong:
+- **Where it lives now:** this machine's settings (sccache, jobs, brew paths, `STT_MODELS_DIR`) are in the
+  gitignored **repo-root** `.cargo/config.toml`. Cargo reads `.cargo/config.toml` in every parent directory, so
+  `rust/` in the main checkout and in `.claude/worktrees/*` both pick it up, and its `VULKAN_SDK` points at the
+  main checkout's `rust/vk-sdk`. A portable copy for other brew users is `rust/cargo-config.example.toml`.
+  The steps below are how it was set up.
 - Use **`whisper-rs` 0.16+** (feature `vulkan`). 0.14 fails with clang 22 (bindgen `_IO_FILE` layout assertions).
 - Brew doesn't link `vulkan-headers` into its prefix, so give CMake a fake SDK dir. Create it once per worktree, next
   to the `.cargo/` dir that uses it (it's gitignored; add `vk-sdk/` to `.gitignore` if it isn't there yet):

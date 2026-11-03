@@ -97,8 +97,15 @@ impl Backend for WhisperRsBackend {
     }
 }
 
+/// Built without the `vulkan` feature: there is no GPU backend, so a GPU request falls back to the CPU.
+#[cfg(not(feature = "vulkan"))]
+fn gpu_device() -> Result<ComputeDevice, String> {
+    Err("this build has no GPU support (built without the `vulkan` feature)".into())
+}
+
 /// The Vulkan device whisper.cpp will use (index 0), or an error when there is no real GPU.
 /// whisper.cpp itself silently falls back to the CPU when it finds no device, so check first.
+#[cfg(feature = "vulkan")]
 fn gpu_device() -> Result<ComputeDevice, String> {
     let devices = whisper_rs::vulkan::list_devices();
     let Some(first) = devices.first() else {

@@ -1,0 +1,22 @@
+# Optional: building with Vulkan from Homebrew (Linuxbrew) instead of distro packages.
+#
+# Distro packages (see README.md) need no Cargo config at all. If your Vulkan headers/loader come from
+# Homebrew, copy this file to `.cargo/config.toml` next to `rust/` (the repo root) or inside `rust/`,
+# then create the SDK stand-in once, from `rust/`:
+#
+#   mkdir -p vk-sdk
+#   ln -sfn /home/linuxbrew/.linuxbrew/opt/vulkan-headers/include vk-sdk/include
+#   ln -sfn /home/linuxbrew/.linuxbrew/lib vk-sdk/lib
+#
+# Optional speed-ups: `rustc-wrapper = "sccache"` under [build], and CMAKE_GENERATOR = "Ninja".
+
+[build]
+# -lvulkan comes from brew, so link and run with its lib dir.
+rustflags = ["-L", "/home/linuxbrew/.linuxbrew/lib", "-C", "link-arg=-Wl,-rpath,/home/linuxbrew/.linuxbrew/lib"]
+
+[env]
+PKG_CONFIG_PATH = "/home/linuxbrew/.linuxbrew/lib/pkgconfig"
+# Relative to the folder that contains `.cargo/`; use "vk-sdk" if you put the config inside rust/.
+VULKAN_SDK = { value = "rust/vk-sdk", relative = true }
+CMAKE_INCLUDE_PATH = "/home/linuxbrew/.linuxbrew/opt/vulkan-headers/include"
+CMAKE_LIBRARY_PATH = "/home/linuxbrew/.linuxbrew/lib"

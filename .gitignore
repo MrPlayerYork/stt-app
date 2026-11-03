@@ -23,3 +23,10 @@ rust/target/
 
 # Fake Vulkan SDK dir for the whisper.cpp build (symlinks into brew, see AGENTS.md)
 rust/vk-sdk/
+
+# This machine only: Cargo paths/sccache (see rust/cargo-config.example.toml) and the uv cache location
+/.cargo/
+/uv.toml
+
+# Local backups and throwaway container storage
+/.backup/

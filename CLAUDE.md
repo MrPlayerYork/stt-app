@@ -18,4 +18,4 @@ Run the app (real terminal only): `uv run stt-app`
   (CAVEATS.md).
   Open questions to settle along the way: [CAVEATS.md](CAVEATS.md).
 - Rust test command (from `rust/`, heavy slot): `cargo test --workspace --no-fail-fast`; GPU (gpu slot, needs
-  `rust/vk-sdk` symlinks per AGENTS.md): `cargo test -p stt-whisper --features whisper --test gpu -- --ignored`
+  `rust/vk-sdk` symlinks per AGENTS.md): `cargo test -p stt-whisper --features vulkan --test gpu -- --ignored`

@@ -11,6 +11,12 @@ publish.workspace = true
 name = "stt"
 path = "src/main.rs"
 
+# Vulkan GPU support is on by default; `cargo build --release -p stt --no-default-features` builds a
+# CPU-only binary that needs no Vulkan SDK.
+[features]
+default = ["vulkan"]
+vulkan = ["stt-whisper/vulkan"]
+
 [dependencies]
 stt-core.workspace = true
 stt-audio.workspace = true

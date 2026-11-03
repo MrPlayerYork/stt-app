@@ -1,8 +1,8 @@
 //! Real-engine tests. `#[ignore]`: run in the `gpu` board slot with
-//! `cargo test -p stt-whisper --features whisper -- --ignored`.
+//! `cargo test -p stt-whisper --features vulkan --test gpu -- --ignored`.
 //!
-//! Models come from `STT_MODELS_DIR` (default the shared `<data-drive>/stt-models`),
-//! audio from `STT_AUDIO` (default `reference/gate.wav` in the main checkout). Tests skip when missing.
+//! Models come from `STT_MODELS_DIR` (default: the app's own models folder), audio from `STT_AUDIO`
+//! (default `reference/gate.wav` at the repo root). Tests skip when missing.
 #![cfg(feature = "whisper")]
 
 use std::path::PathBuf;
@@ -13,12 +13,14 @@ use stt_core::fakes::MemorySecretStore;
 use stt_core::progress::LoadEvent;
 use stt_core::transcribe::{ComputeDevice, Transcriber, TranscriberFactory};
 
-const MAIN: &str = "<repo>";
+/// The repo root (this crate is `rust/crates/stt-whisper`).
+const MAIN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../..");
 
 fn models_dir() -> PathBuf {
-    std::env::var("STT_MODELS_DIR")
-        .unwrap_or_else(|_| "<data-drive>/stt-models".into())
-        .into()
+    match std::env::var("STT_MODELS_DIR") {
+        Ok(d) => d.into(),
+        Err(_) => stt_core::config::default_models_dir().expect("no user data dir"),
+    }
 }
 
 fn gate_audio() -> Option<Vec<f32>> {

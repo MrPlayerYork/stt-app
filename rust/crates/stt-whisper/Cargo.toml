@@ -12,9 +12,12 @@ publish.workspace = true
 # `whisper` is OFF by default so `cargo check --workspace` never compiles whisper.cpp while this crate is
 # a stub. The `stt` binary enables it (Phase 3); stt-whisper stays a plain dependency of it.
 # Building with it ON needs the `heavy` board slot.
+# `vulkan` adds the GPU backend (needs Vulkan headers, loader and glslc at build time). Without it the
+# engine is CPU-only and a GPU device setting falls back to the CPU with a message.
 [features]
 default = []
 whisper = ["dep:whisper-rs"]
+vulkan = ["whisper", "whisper-rs/vulkan"]
 
 [dependencies]
 stt-core.workspace = true

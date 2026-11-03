@@ -1,7 +1,7 @@
 [project]
 name = "stt-app"
 version = "1.0.0"
-description = "Add your description here"
+description = "Push-to-record speech-to-text terminal app (Python reference implementation)"
 readme = "README.md"
 authors = [
     { name = "Paityn", email = "74891790+MrPlayerYork@users.noreply.github.com" }
@@ -33,9 +33,6 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.2.0",
 ]
-
-[tool.uv]
-cache-dir = "<data-drive>/.uv-cache"
 
 [tool.pytest.ini_options]
 # Only the Python tests: rust/vk-sdk symlinks into the Vulkan SDK, which ships Python files of its own.

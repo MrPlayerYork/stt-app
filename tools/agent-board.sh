@@ -3,7 +3,9 @@
 # Slots are claim files; the log is append-only. Lives in the MAIN checkout so every worktree sees it.
 set -euo pipefail
 
-BOARD_DIR="${STT_BOARD_DIR:-<repo>/.agents}"
+# The main checkout is the parent of git's common dir, the same from every worktree.
+MAIN_DIR="$(cd "$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
+BOARD_DIR="${STT_BOARD_DIR:-$MAIN_DIR/.agents}"
 LOG="$BOARD_DIR/board.log"
 SLOTS="$BOARD_DIR/slots"
 mkdir -p "$SLOTS"

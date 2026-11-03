@@ -1,6 +1,6 @@
 //! Timing helper: `cargo run --release --features whisper --example bench -- <gpu|cpu> <beam> <runs> [threads]`.
 //!
-//! Env: `STT_MODELS_DIR` (default the shared models dir), `STT_AUDIO` (16 kHz mono wav), `STT_MODEL`,
+//! Env: `STT_MODELS_DIR` (default: the app's models folder), `STT_AUDIO` (16 kHz mono wav), `STT_MODEL`,
 //! `STT_QUANT`. Prints the load+warm-up time and each transcribe time. Run in the `gpu` slot.
 
 use std::sync::Arc;
@@ -18,8 +18,12 @@ fn main() {
     let runs: usize = a.get(3).and_then(|s| s.parse().ok()).unwrap_or(3);
     let threads: i32 = a.get(4).and_then(|s| s.parse().ok()).unwrap_or(0);
 
-    let dir = std::env::var("STT_MODELS_DIR")
-        .unwrap_or_else(|_| "<data-drive>/stt-models".into());
+    let dir = std::env::var("STT_MODELS_DIR").unwrap_or_else(|_| {
+        stt_core::config::default_models_dir()
+            .expect("no user data dir")
+            .to_string_lossy()
+            .into_owned()
+    });
     let audio_path = std::env::var("STT_AUDIO").expect("set STT_AUDIO to a 16 kHz mono wav");
     let cfg = WhisperConfig {
         model: std::env::var("STT_MODEL").unwrap_or_else(|_| "large-v3-turbo".into()),
