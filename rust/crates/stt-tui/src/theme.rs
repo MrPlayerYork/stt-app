@@ -112,9 +112,86 @@ pub fn ellipsize(s: &str, max: usize) -> String {
     t
 }
 
+/// One dim status line about the reasoning behind an LLM result (Python `reasoning_line`), e.g.
+/// `Reasoning: 1,234 tokens · [v] view`. Used by the Main tab, History and Settings › Test connection.
+pub fn reasoning_text(res: &stt_core::LlmResult) -> String {
+    let mut line = match (res.reasoning.is_empty(), res.reasoning_tokens, res.reasoned) {
+        (false, Some(n), _) => format!("Reasoning: {} tokens · [v] view", thousands(n)),
+        (false, None, _) => "Reasoning: captured · [v] view".to_string(),
+        (true, Some(n), _) if n > 0 => {
+            format!(
+                "Reasoning: {} tokens (text not exposed by provider)",
+                thousands(n)
+            )
+        }
+        (true, _, Some(false)) => "No reasoning".to_string(),
+        _ => "Reasoning: unknown".to_string(),
+    };
+    if !res.note.is_empty() {
+        line.push_str(&format!(" · {}", res.note));
+    }
+    line
+}
+
+/// [`reasoning_text`] as a dim line.
+pub fn reasoning_line(res: &stt_core::LlmResult) -> Line<'static> {
+    Line::styled(reasoning_text(res), dim())
+}
+
+/// `1234567` → `1,234,567`.
+pub fn thousands(n: u64) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn res(
+        reasoning: &str,
+        tokens: Option<u64>,
+        reasoned: Option<bool>,
+        note: &str,
+    ) -> stt_core::LlmResult {
+        stt_core::LlmResult {
+            text: "x".into(),
+            reasoning: reasoning.into(),
+            reasoning_tokens: tokens,
+            reasoned,
+            note: note.into(),
+        }
+    }
+
+    /// Port of Python `test_ui_reasoning.test_line_variants`.
+    #[test]
+    fn reasoning_line_variants() {
+        assert_eq!(
+            reasoning_text(&res("because", Some(1234), Some(true), "")),
+            "Reasoning: 1,234 tokens · [v] view"
+        );
+        assert_eq!(
+            reasoning_text(&res("", Some(1234), Some(true), "")),
+            "Reasoning: 1,234 tokens (text not exposed by provider)"
+        );
+        assert_eq!(
+            reasoning_text(&res("", None, Some(false), "")),
+            "No reasoning"
+        );
+        assert_eq!(
+            reasoning_text(&res("", None, None, "")),
+            "Reasoning: unknown"
+        );
+        assert!(reasoning_text(&res("", None, Some(false), "ignored")).ends_with("· ignored"));
+        assert_eq!(thousands(1_234_567), "1,234,567");
+    }
 
     #[test]
     fn meter_fills_and_clamps() {
