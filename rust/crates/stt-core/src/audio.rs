@@ -67,16 +67,40 @@ pub trait AudioSource: Send + Sync {
 }
 
 /// Records one device (push-to-record).
+///
+/// Hot mic (decided 2026-11-02): opening a PulseAudio stream takes 1-2 s, so the UI calls [`Self::open`]
+/// once at startup and keeps the stream running ("listening": levels flow, samples are discarded). Then
+/// `start` only has to begin keeping samples, and `stop` returns them while the stream stays open.
+/// Without `open`, `start` opens the device itself and `stop` closes it (the Phase 2 behaviour).
 pub trait Recorder: Send {
-    /// Start capturing. Calling it while already recording is a no-op.
+    /// Open the device stream without keeping audio (hot mic). [`Self::level`] reports live levels from
+    /// then on. No-op if already open. May block for the device open time (1-2 s on PulseAudio), so call
+    /// it off the UI thread. Default: does nothing (the recorder opens on `start`).
+    fn open(&mut self) -> Result<(), AudioError> {
+        Ok(())
+    }
+
+    /// Close the stream opened by [`Self::open`] (and stop recording, discarding audio). No-op if closed.
+    fn close(&mut self) {
+        let _ = self.stop();
+    }
+
+    /// True while the device stream is open (after `open`, or while recording).
+    fn is_open(&self) -> bool {
+        self.is_recording()
+    }
+
+    /// Start keeping audio. Opens the device first if it is not open. No-op while already recording.
     fn start(&mut self) -> Result<(), AudioError>;
 
-    /// Stop and return everything captured since `start`, as mono 16 kHz `f32`. Returns an empty buffer if
-    /// nothing was captured or it was not recording. To cancel (Ctrl+C), call this and drop the result.
+    /// Stop keeping audio and return everything captured since `start`, as mono 16 kHz `f32`. Returns an
+    /// empty buffer if nothing was captured or it was not recording. To cancel (Ctrl+C), call this and drop
+    /// the result. If the stream was opened with [`Self::open`] it stays open (listening); otherwise it
+    /// closes.
     fn stop(&mut self) -> Result<Vec<f32>, AudioError>;
 
-    /// Live input level for the meter: linear RMS of the most recent block, `0.0..=1.0`; 0 when idle.
-    /// Cheap and non-blocking (called on every UI redraw).
+    /// Live input level for the meter: linear RMS of the most recent block, `0.0..=1.0`; 0 when the stream
+    /// is closed. Cheap and non-blocking (called on every UI redraw).
     fn level(&self) -> f32;
 
     /// True between `start` and `stop`.

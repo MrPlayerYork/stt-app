@@ -121,6 +121,18 @@ string_enum! {
 }
 
 string_enum! {
+    /// `whisper.decoding` (Rust-only, additive): how Whisper picks words. The Python app ignores this key
+    /// (it always used beam 5). Decided 2026-11-02: default beam 5, greedy offered as the fast option.
+    pub enum WhisperDecoding {
+        /// Beam search with 5 beams (faster-whisper's default). Default. About 0.34 s per 20 s clip warm.
+        Beam = "beam", alias "beam5";
+        /// Greedy: take the most likely token each step. About 0.23 s per 20 s clip, slightly less accurate.
+        Greedy = "greedy", alias "fast";
+    }
+    default = Beam;
+}
+
+string_enum! {
     /// `llm.provider`. An unknown provider string loads as the default (`openai_compat`); the Python app
     /// kept the string and failed when building the backend.
     pub enum Provider {
@@ -293,6 +305,8 @@ pub struct WhisperConfig {
     pub download_connections: u32,
     /// ggml weight variant (Rust-only key, default q5_0). See [`WhisperQuant`].
     pub quantization: WhisperQuant,
+    /// Beam search or greedy (Rust-only key, default beam). See [`WhisperDecoding`].
+    pub decoding: WhisperDecoding,
 }
 
 impl Default for WhisperConfig {
@@ -305,6 +319,7 @@ impl Default for WhisperConfig {
             models_dir: String::new(),
             download_connections: 8,
             quantization: WhisperQuant::Q5_0,
+            decoding: WhisperDecoding::Beam,
         }
     }
 }

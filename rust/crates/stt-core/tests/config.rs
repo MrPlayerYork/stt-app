@@ -76,7 +76,7 @@ fn python_custom_file_loads() {
 }
 
 /// What Rust writes has exactly the keys and values Python writes, so the Python app can read it,
-/// plus only the additive Rust-only keys (`whisper.quantization`), which Python ignores.
+/// plus only the additive Rust-only keys (`whisper.quantization`, `whisper.decoding`), which Python ignores.
 #[test]
 fn rust_output_matches_python_output() {
     for py in [PY_DEFAULTS, PY_CUSTOM] {
@@ -87,6 +87,7 @@ fn rust_output_matches_python_output() {
             whisper.remove("quantization").unwrap().as_str(),
             Some("q5_0")
         );
+        assert_eq!(whisper.remove("decoding").unwrap().as_str(), Some("beam"));
         let theirs: toml::Table = toml::from_str(py).unwrap();
         assert_eq!(ours, theirs);
     }

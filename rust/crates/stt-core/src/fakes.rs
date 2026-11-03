@@ -438,6 +438,7 @@ impl AudioSource for FakeAudioSource {
             source: self.clone(),
             id,
             recording: false,
+            open: false,
         }))
     }
 
@@ -455,15 +456,41 @@ pub struct FakeRecorder {
     source: FakeAudioSource,
     id: DeviceId,
     recording: bool,
+    /// Opened with `open` (hot mic): stays open across `stop`.
+    open: bool,
 }
 
-impl Recorder for FakeRecorder {
-    fn start(&mut self) -> Result<(), AudioError> {
+impl FakeRecorder {
+    fn check_open(&self) -> Result<(), AudioError> {
         if lock(&self.source.state).fail_open.contains(&self.id) {
             return Err(AudioError::Open {
                 device: self.id.0.clone(),
                 message: "fake failure".into(),
             });
+        }
+        Ok(())
+    }
+}
+
+impl Recorder for FakeRecorder {
+    fn open(&mut self) -> Result<(), AudioError> {
+        self.check_open()?;
+        self.open = true;
+        Ok(())
+    }
+
+    fn close(&mut self) {
+        self.recording = false;
+        self.open = false;
+    }
+
+    fn is_open(&self) -> bool {
+        self.open || self.recording
+    }
+
+    fn start(&mut self) -> Result<(), AudioError> {
+        if !self.open {
+            self.check_open()?;
         }
         self.recording = true;
         Ok(())
@@ -481,7 +508,7 @@ impl Recorder for FakeRecorder {
     }
 
     fn level(&self) -> f32 {
-        if self.recording {
+        if self.recording || self.open {
             lock(&self.source.state).level
         } else {
             0.0

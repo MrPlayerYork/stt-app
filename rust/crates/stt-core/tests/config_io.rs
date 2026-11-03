@@ -169,7 +169,7 @@ fn failed_save_keeps_old_file_intact() {
     assert!(tmp_leftovers(&dir).is_empty());
 }
 
-/// Default save has the same keys and values as Python's default save (plus the Rust-only quantization key).
+/// Default save has the same keys and values as Python's default save (plus the Rust-only quantization and decoding keys).
 #[test]
 fn saved_text_matches_python_key_layout() {
     let dir = scratch_dir("layout");
@@ -182,5 +182,6 @@ fn saved_text_matches_python_key_layout() {
         .as_table_mut()
         .unwrap()
         .remove("quantization");
+    ours["whisper"].as_table_mut().unwrap().remove("decoding");
     assert_eq!(ours, python);
 }
