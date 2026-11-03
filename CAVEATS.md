@@ -71,12 +71,12 @@ once it's decided. Context: [RUST_PLAN.md](RUST_PLAN.md); gate numbers: `scratch
   never in history. Backup bundle of the old history: `.backup/pre-rewrite-20261102.bundle` (gitignored).
 - [x] Clean build proven in a fresh Fedora distrobox using only the README's packages, with no Cargo config:
   release build, `cargo test --workspace` (279 passed), and the CPU-only `--no-default-features` build.
-- [ ] **Parallel GPU loads can segfault** (found 2026-11-03): the GPU tests crash when they load models in
-  parallel threads, with both the brew build and the portable Ubuntu build (`--test-threads=1` always passes, and
-  the GPU is used). This is most likely what the earlier "GPU inside distrobox `--nvidia`" failure was. The app can
-  hit it: `ModelLoader::start` starts a new load while an old one may still be running (a Whisper setting
-  changed mid-load), and `load_lock` is per transcriber. Fix: a process-wide load lock in stt-whisper. Listed as
-  a known issue in the v1.0.0 release notes.
+- [x] **Parallel GPU loads could segfault** (found 2026-11-03): the GPU tests crashed when separate transcribers
+  opened models in parallel threads (3 of 4 parallel runs, brew and portable builds alike); this was most likely
+  also the earlier "GPU inside distrobox `--nvidia`" failure. In the app it needed a rare overlap, since
+  `unload` already waits for a running load. **Fixed in v1.0.1:** a process-wide `OPEN_LOCK` in stt-whisper means
+  only one model opens and warms up at a time (4 of 4 parallel GPU runs pass; unit test
+  `separate_transcribers_never_open_at_the_same_time`).
 - [ ] **Leftover to delete by hand:** `<data-drive>/stt-distrobox-home` (about 7.9 GB, the container's home with the
   clean-build checkout). Claude's safety check blocks deleting top-level folders of a drive.
 - [x] **Pushed 2026-11-03:** https://github.com/MrPlayerYork/stt-app (public; master and all 3 tags).

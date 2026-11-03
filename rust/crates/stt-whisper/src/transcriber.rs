@@ -114,6 +114,11 @@ struct Listener {
     cb: LoadProgressFn,
 }
 
+/// One model opens (and warms up) at a time in the whole process. whisper.cpp's Vulkan backend can
+/// segfault when two models initialise in parallel threads (seen in the parallel GPU tests); the
+/// per-transcriber `load_lock` only serialises loads of the same transcriber.
+static OPEN_LOCK: Mutex<()> = Mutex::new(());
+
 /// [`Transcriber`] over any [`Backend`].
 pub struct WhisperTranscriber<B: Backend> {
     settings: Settings,
@@ -247,6 +252,7 @@ impl<B: Backend> WhisperTranscriber<B> {
             } else {
                 "CPU"
             };
+            let open_guard = lock(&OPEN_LOCK);
             let result = self
                 .backend
                 .open(
@@ -257,6 +263,7 @@ impl<B: Backend> WhisperTranscriber<B> {
                     self.settings.decoding,
                 )
                 .and_then(|mut s| s.warm_up().map(|()| s));
+            drop(open_guard);
             match result {
                 Ok(session) => {
                     let info = LoadInfo {
@@ -394,6 +401,9 @@ mod tests {
         opens: Arc<AtomicUsize>,
         runs: Arc<AtomicUsize>,
         delay_ms: u64,
+        /// Opens in progress right now, and the most seen at once.
+        in_open: Arc<AtomicUsize>,
+        max_in_open: Arc<AtomicUsize>,
     }
 
     struct FakeSession(DeviceKind, Arc<AtomicUsize>);
@@ -430,7 +440,10 @@ mod tests {
             _: WhisperDecoding,
         ) -> Result<Box<dyn Session>, String> {
             self.opens.fetch_add(1, Ordering::SeqCst);
+            let now = self.in_open.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_in_open.fetch_max(now, Ordering::SeqCst);
             std::thread::sleep(Duration::from_millis(self.delay_ms));
+            self.in_open.fetch_sub(1, Ordering::SeqCst);
             let err = match device {
                 DeviceKind::Gpu => self.gpu_error,
                 DeviceKind::Cpu => self.cpu_error,
@@ -611,6 +624,38 @@ mod tests {
         }
         assert_eq!(opens.load(Ordering::SeqCst), 1);
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn separate_transcribers_never_open_at_the_same_time() {
+        let in_open = Arc::new(AtomicUsize::new(0));
+        let max_in_open = Arc::new(AtomicUsize::new(0));
+        let backend = || FakeBackend {
+            delay_ms: 100,
+            in_open: in_open.clone(),
+            max_in_open: max_in_open.clone(),
+            ..Default::default()
+        };
+        let made: Vec<_> = (0..3)
+            .map(|i| {
+                make(
+                    &format!("sep{i}"),
+                    WhisperDevice::Auto,
+                    backend(),
+                    no_fetch(),
+                    true,
+                )
+            })
+            .collect();
+        std::thread::scope(|sc| {
+            for (t, _) in &made {
+                sc.spawn(|| t.load(None).unwrap());
+            }
+        });
+        assert_eq!(max_in_open.load(Ordering::SeqCst), 1);
+        for (_, dir) in made {
+            std::fs::remove_dir_all(dir).ok();
+        }
     }
 
     #[test]
