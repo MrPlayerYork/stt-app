@@ -103,7 +103,7 @@ Model tiers: **H** = haiku, **S** = sonnet, **O** = opus. "Heavy" = needs the `h
 | P3-4 | `stt-core` config recovery (`recover.rs`: keep valid values, reset bad ones, backup, report) | S |
 | P3-5 | Hot mic in `stt-audio` (`Recorder::open/close`), `whisper.decoding` (beam/greedy) wired into `stt-whisper` | S, heavy |
 
-The orchestrator wrote the shared `stt-tui` framework first (commit b961e93: `App`, `Screen`/`Nav`, runner, theme,
+The orchestrator wrote the shared `stt-tui` framework first (commit 4114d6c: `App`, `Screen`/`Nav`, runner, theme,
 widgets, hot-mic `Mic`, `ModelLoader`, testkit, one stub per agent module) plus the stt-core contract additions.
 
 ### Phase 4 — Integration + parity (orchestrator, 1–2 agents)
